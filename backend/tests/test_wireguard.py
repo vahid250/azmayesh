@@ -59,10 +59,41 @@ def test_mock_endpoint_marks_config_as_non_connectable_and_encrypts_storage(monk
         assert payload["state"] == "generated_mock"
         assert payload["connectivity_verified"] is False
         assert "mock.invalid" in payload["config"]
+        assert "[Interface]" in payload["config"] and "[Peer]" in payload["config"]
+        client_id = payload["id"]
+
+        # Config can be retrieved only through the authenticated endpoint and is decrypted at the edge.
+        fetched = client.get(
+            f"/api/v1/wireguard/configs/{client_id}/config",
+            headers={"X-API-Key": "unit-test-api-key"},
+        )
+        assert fetched.status_code == 200
+        assert fetched.json()["config"] == payload["config"]
+
+        status = client.get(
+            f"/api/v1/wireguard/configs/{client_id}/status",
+            headers={"X-API-Key": "unit-test-api-key"},
+        )
+        assert status.status_code == 200
+        assert status.json()["handshake_seen"] is False
+        assert status.json()["connectivity_verified"] is False
+
+        revoked = client.post(
+            f"/api/v1/wireguard/configs/{client_id}/revoke",
+            headers={"X-API-Key": "unit-test-api-key"},
+        )
+        assert revoked.status_code == 200 and revoked.json()["revoked"] is True
+        blocked = client.get(
+            f"/api/v1/wireguard/configs/{client_id}/config",
+            headers={"X-API-Key": "unit-test-api-key"},
+        )
+        assert blocked.status_code == 410
+
         with TestingSession() as db:
             stored = db.execute(select(WireGuardClient)).scalar_one()
             assert "PrivateKey" not in stored.config_encrypted
             assert "=" not in stored.private_key_encrypted[:8]
+            assert stored.state == "revoked"
     finally:
         app.dependency_overrides.clear()
         test_engine.dispose()

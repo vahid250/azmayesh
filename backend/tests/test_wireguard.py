@@ -81,7 +81,7 @@ def test_mock_endpoint_marks_config_as_non_connectable_and_encrypts_storage(monk
             "user": '{"id":9876,"first_name":"Other"}',
         }
         secret = hmac.new(b"WebAppData", settings.telegram_bot_token.encode(), hashlib.sha256).digest()
-        check = "\\n".join(f"{k}={v}" for k, v in sorted(foreign_values.items()))
+        check = "\n".join(f"{k}={v}" for k, v in sorted(foreign_values.items()))
         foreign_values["hash"] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
         foreign = client.get(
             f"/api/v1/wireguard/configs/{client_id}/config",

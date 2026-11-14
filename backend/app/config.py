@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     mock_mode: bool = True
     api_key: str = ""
     telegram_bot_token: str = ""
+    telegram_webhook_secret: str = ""
+    mini_app_url: str = ""
     telegram_init_data_max_age_seconds: int = 86400
     encryption_key: str = ""
     database_url: str = "sqlite:///./rma_backend.db"

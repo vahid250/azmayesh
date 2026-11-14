@@ -36,5 +36,7 @@ jobs:
           node-version: "22"
       - name: Check dashboard API client syntax
         run: node --check ../frontend/rma-api.js
+      - name: Check dashboard integration and inline scripts
+        run: node ../frontend/check-dashboard.mjs
       - name: Run tests
         run: PYTHONPATH=. pytest -q

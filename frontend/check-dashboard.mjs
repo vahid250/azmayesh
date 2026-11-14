@@ -23,6 +23,24 @@ if (!apiClient.includes("X-Telegram-Init-Data")) {
   throw new Error("Telegram initData header missing from API client.");
 }
 
+const forbiddenDemoClaims = [
+  "READY_TO_SPAWN",
+  "~28ms",
+  "~29ms",
+  "~34ms",
+  "~38ms",
+  "~39ms",
+  "99.8%",
+  "1.4 GB / 30 GB",
+  "مصرف: ۰ مگابایت",
+  "10Gbps",
+  "38 ms",
+  "100% OFFICIAL"
+];
+for (const claim of forbiddenDemoClaims) {
+  if (html.includes(claim)) throw new Error("Unverified dashboard claim remains: " + claim);
+}
+
 const inlineScripts = [...html.matchAll(/<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi)];
 if (inlineScripts.length === 0) throw new Error("No inline scripts found for syntax validation.");
 inlineScripts.forEach((match, index) => {

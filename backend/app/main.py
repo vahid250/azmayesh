@@ -4,12 +4,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.models import WireGuardClient
+from app.models import WireGuardClient, WireGuardClientOwner
 from app.security import decrypt_secret, require_authenticated_request
 from app.wireguard import get_wireguard_peer_status, issue_wireguard_config, revoke_wireguard_peer
 from app import models  # noqa: F401 - register ORM metadata
 
-app = FastAPI(title="R&MA Backend Lab", version="0.2.0")
+app = FastAPI(title="R&MA Backend Lab", version="0.3.0")
 Base.metadata.create_all(bind=engine)
 
 
@@ -17,9 +17,22 @@ class WireGuardRequest(BaseModel):
     client_name: str = Field(default="R&MA Client", min_length=1, max_length=64)
 
 
-def get_client_or_404(db: Session, client_id: int) -> WireGuardClient:
+def owner_id_from_auth(auth: dict) -> str:
+    if auth.get("auth_method") == "lab_api_key":
+        return "lab-local"
+    user = auth.get("user") or {}
+    telegram_id = user.get("id")
+    if not isinstance(telegram_id, (int, str)) or not str(telegram_id).isdigit():
+        raise HTTPException(status_code=401, detail="Telegram user identity is missing from initData")
+    return str(telegram_id)
+
+
+def get_client_or_404(db: Session, client_id: int, owner_id: str) -> WireGuardClient:
     row = db.get(WireGuardClient, client_id)
     if row is None:
+        raise HTTPException(status_code=404, detail="WireGuard client not found")
+    owner = db.get(WireGuardClientOwner, client_id)
+    if owner is None or owner.telegram_user_id != owner_id:
         raise HTTPException(status_code=404, detail="WireGuard client not found")
     return row
 
@@ -37,14 +50,27 @@ def health():
     }
 
 
-@app.post("/api/v1/wireguard/configs", dependencies=[Depends(require_authenticated_request)])
-def create_wireguard_config(request: WireGuardRequest, db: Session = Depends(get_db)):
-    return issue_wireguard_config(db, request.client_name)
+@app.post("/api/v1/wireguard/configs")
+def create_wireguard_config(
+    request: WireGuardRequest,
+    auth: dict = Depends(require_authenticated_request),
+    db: Session = Depends(get_db),
+):
+    return issue_wireguard_config(db, request.client_name, owner_id_from_auth(auth))
 
 
-@app.get("/api/v1/wireguard/configs", dependencies=[Depends(require_authenticated_request)])
-def list_wireguard_configs(db: Session = Depends(get_db)):
-    rows = db.execute(select(WireGuardClient).order_by(WireGuardClient.id.desc())).scalars().all()
+@app.get("/api/v1/wireguard/configs")
+def list_wireguard_configs(
+    auth: dict = Depends(require_authenticated_request),
+    db: Session = Depends(get_db),
+):
+    owner_id = owner_id_from_auth(auth)
+    rows = db.execute(
+        select(WireGuardClient)
+        .join(WireGuardClientOwner, WireGuardClientOwner.client_id == WireGuardClient.id)
+        .where(WireGuardClientOwner.telegram_user_id == owner_id)
+        .order_by(WireGuardClient.id.desc())
+    ).scalars().all()
     return [
         {
             "id": row.id,
@@ -58,9 +84,13 @@ def list_wireguard_configs(db: Session = Depends(get_db)):
     ]
 
 
-@app.get("/api/v1/wireguard/configs/{client_id}/config", dependencies=[Depends(require_authenticated_request)])
-def get_wireguard_config(client_id: int, db: Session = Depends(get_db)):
-    row = get_client_or_404(db, client_id)
+@app.get("/api/v1/wireguard/configs/{client_id}/config")
+def get_wireguard_config(
+    client_id: int,
+    auth: dict = Depends(require_authenticated_request),
+    db: Session = Depends(get_db),
+):
+    row = get_client_or_404(db, client_id, owner_id_from_auth(auth))
     if row.state == "revoked":
         raise HTTPException(status_code=410, detail="This WireGuard client has been revoked")
     return {
@@ -72,11 +102,19 @@ def get_wireguard_config(client_id: int, db: Session = Depends(get_db)):
     }
 
 
-@app.get("/api/v1/wireguard/configs/{client_id}/status", dependencies=[Depends(require_authenticated_request)])
-def wireguard_status(client_id: int, db: Session = Depends(get_db)):
-    return get_wireguard_peer_status(get_client_or_404(db, client_id))
+@app.get("/api/v1/wireguard/configs/{client_id}/status")
+def wireguard_status(
+    client_id: int,
+    auth: dict = Depends(require_authenticated_request),
+    db: Session = Depends(get_db),
+):
+    return get_wireguard_peer_status(get_client_or_404(db, client_id, owner_id_from_auth(auth)))
 
 
-@app.post("/api/v1/wireguard/configs/{client_id}/revoke", dependencies=[Depends(require_authenticated_request)])
-def revoke_wireguard_config(client_id: int, db: Session = Depends(get_db)):
-    return revoke_wireguard_peer(db, get_client_or_404(db, client_id))
+@app.post("/api/v1/wireguard/configs/{client_id}/revoke")
+def revoke_wireguard_config(
+    client_id: int,
+    auth: dict = Depends(require_authenticated_request),
+    db: Session = Depends(get_db),
+):
+    return revoke_wireguard_peer(db, get_client_or_404(db, client_id, owner_id_from_auth(auth)))

@@ -12,7 +12,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-در `.env` یک `API_KEY` طولانی و یک کلید Fernet مستقل برای `ENCRYPTION_KEY` قرار دهید. برای تولید کلید Fernet:
+در `.env` یک `API_KEY` طولانی، توکن ربات تلگرام و یک کلید Fernet مستقل برای `ENCRYPTION_KEY` قرار دهید. مقدار پیش‌فرض برنامه `APP_ENV=production` است؛ برای تست محلی، `APP_ENV=development` را صریحاً در فایل `.env` تنظیم کنید. برای تولید کلید Fernet:
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

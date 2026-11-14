@@ -42,3 +42,39 @@ def test_webhook_ignores_non_start_updates(monkeypatch):
     )
     assert response.status_code == 200
     assert response.json() == {"ok": True}
+
+
+def test_webhook_handles_start_and_telegram_username(monkeypatch):
+    import asyncio
+    import app.telegram_bot as bot
+
+    monkeypatch.setattr(settings, "telegram_webhook_secret", "unit-test-secret")
+    monkeypatch.setattr(settings, "mini_app_url", "")
+    sent = []
+
+    async def fake_send(chat_id, reply):
+        sent.append((chat_id, reply))
+
+    monkeypatch.setattr(bot, "send_telegram_message", fake_send)
+    client = TestClient(app)
+    response = client.post(
+        "/telegram/webhook",
+        headers={"X-Telegram-Bot-Api-Secret-Token": "unit-test-secret"},
+        json={"message": {"text": "/start@RMA_Connect_Bot", "chat": {"id": 123}}},
+    )
+    assert response.status_code == 200
+    assert len(sent) == 1
+    assert sent[0][0] == 123
+    assert "R&MA VPN" in sent[0][1]["text"]
+    assert "reply_markup" not in sent[0][1]
+
+
+def test_webhook_handles_empty_text(monkeypatch):
+    monkeypatch.setattr(settings, "telegram_webhook_secret", "unit-test-secret")
+    client = TestClient(app)
+    response = client.post(
+        "/telegram/webhook",
+        headers={"X-Telegram-Bot-Api-Secret-Token": "unit-test-secret"},
+        json={"message": {"text": "", "chat": {"id": 123}}},
+    )
+    assert response.status_code == 200

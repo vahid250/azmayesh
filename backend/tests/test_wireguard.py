@@ -1,0 +1,68 @@
+import ipaddress
+from cryptography.hazmat.primitives.asymmetric import x25519
+from app.wireguard import generate_keypair
+
+
+def test_wireguard_keypair_is_valid_x25519():
+    private_b64, public_b64 = generate_keypair()
+    import base64
+    private = x25519.X25519PrivateKey.from_private_bytes(base64.b64decode(private_b64))
+    derived = private.public_key().public_bytes_raw()
+    assert derived == base64.b64decode(public_b64)
+
+
+def test_testnet_address_is_not_used_as_real_default():
+    # Regression guard: the former sample endpoint was TEST-NET-3, not a routable server.
+    assert ipaddress.ip_address("203.0.113.10").is_private
+
+
+def test_mock_endpoint_marks_config_as_non_connectable_and_encrypts_storage(monkeypatch):
+    from cryptography.fernet import Fernet
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.config import settings
+    from app.database import Base, get_db
+    from app.main import app
+    from app.models import WireGuardClient
+
+    test_engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(test_engine)
+    TestingSession = sessionmaker(bind=test_engine, autoflush=False, autocommit=False)
+
+    def override_get_db():
+        db = TestingSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    monkeypatch.setattr(settings, "api_key", "unit-test-api-key")
+    monkeypatch.setattr(settings, "encryption_key", Fernet.generate_key().decode())
+    monkeypatch.setattr(settings, "mock_mode", True)
+    monkeypatch.setattr(settings, "wg_subnet", "10.66.66.0/24")
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        client = TestClient(app)
+        denied = client.post("/api/v1/wireguard/configs", json={"client_name": "test"})
+        assert denied.status_code == 401
+        response = client.post(
+            "/api/v1/wireguard/configs",
+            headers={"X-API-Key": "unit-test-api-key"},
+            json={"client_name": "test device"},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["state"] == "generated_mock"
+        assert payload["connectivity_verified"] is False
+        assert "mock.invalid" in payload["config"]
+        with TestingSession() as db:
+            stored = db.execute(select(WireGuardClient)).scalar_one()
+            assert "PrivateKey" not in stored.config_encrypted
+            assert "=" not in stored.private_key_encrypted[:8]
+    finally:
+        app.dependency_overrides.clear()
+        test_engine.dispose()

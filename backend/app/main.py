@@ -7,9 +7,11 @@ from app.database import Base, engine, get_db
 from app.models import WireGuardClient, WireGuardClientOwner
 from app.security import decrypt_secret, require_authenticated_request
 from app.wireguard import get_wireguard_peer_status, issue_wireguard_config, revoke_wireguard_peer
+from app.telegram_bot import router as telegram_router
 from app import models  # noqa: F401 - register ORM metadata
 
-app = FastAPI(title="R&MA Backend Lab", version="0.3.0")
+app = FastAPI(title="R&MA Backend Lab", version="0.4.0")
+app.include_router(telegram_router)
 Base.metadata.create_all(bind=engine)
 
 

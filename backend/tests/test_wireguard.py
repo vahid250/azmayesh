@@ -72,6 +72,23 @@ def test_mock_endpoint_marks_config_as_non_connectable_and_encrypts_storage(monk
         listed = client.get("/api/v1/wireguard/configs", headers={"X-API-Key": "unit-test-api-key"})
         assert listed.status_code == 200 and len(listed.json()) == 1
 
+        # A different Telegram identity cannot read a lab-owned client.
+        import hashlib, hmac, time
+        from urllib.parse import urlencode
+        monkeypatch.setattr(settings, "telegram_bot_token", "123456:unit-test-token")
+        foreign_values = {
+            "auth_date": str(int(time.time())),
+            "user": '{"id":9876,"first_name":"Other"}',
+        }
+        secret = hmac.new(b"WebAppData", settings.telegram_bot_token.encode(), hashlib.sha256).digest()
+        check = "\\n".join(f"{k}={v}" for k, v in sorted(foreign_values.items()))
+        foreign_values["hash"] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+        foreign = client.get(
+            f"/api/v1/wireguard/configs/{client_id}/config",
+            headers={"X-Telegram-Init-Data": urlencode(foreign_values)},
+        )
+        assert foreign.status_code == 404
+
         status = client.get(
             f"/api/v1/wireguard/configs/{client_id}/status",
             headers={"X-API-Key": "unit-test-api-key"},

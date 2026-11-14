@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import Base, engine, get_db
 from app.models import WireGuardClient
-from app.security import decrypt_secret, require_api_key
+from app.security import decrypt_secret, require_authenticated_request
 from app.wireguard import get_wireguard_peer_status, issue_wireguard_config, revoke_wireguard_peer
 from app import models  # noqa: F401 - register ORM metadata
 
@@ -37,12 +37,12 @@ def health():
     }
 
 
-@app.post("/api/v1/wireguard/configs", dependencies=[Depends(require_api_key)])
+@app.post("/api/v1/wireguard/configs", dependencies=[Depends(require_authenticated_request)])
 def create_wireguard_config(request: WireGuardRequest, db: Session = Depends(get_db)):
     return issue_wireguard_config(db, request.client_name)
 
 
-@app.get("/api/v1/wireguard/configs", dependencies=[Depends(require_api_key)])
+@app.get("/api/v1/wireguard/configs", dependencies=[Depends(require_authenticated_request)])
 def list_wireguard_configs(db: Session = Depends(get_db)):
     rows = db.execute(select(WireGuardClient).order_by(WireGuardClient.id.desc())).scalars().all()
     return [
@@ -58,7 +58,7 @@ def list_wireguard_configs(db: Session = Depends(get_db)):
     ]
 
 
-@app.get("/api/v1/wireguard/configs/{client_id}/config", dependencies=[Depends(require_api_key)])
+@app.get("/api/v1/wireguard/configs/{client_id}/config", dependencies=[Depends(require_authenticated_request)])
 def get_wireguard_config(client_id: int, db: Session = Depends(get_db)):
     row = get_client_or_404(db, client_id)
     if row.state == "revoked":
@@ -72,11 +72,11 @@ def get_wireguard_config(client_id: int, db: Session = Depends(get_db)):
     }
 
 
-@app.get("/api/v1/wireguard/configs/{client_id}/status", dependencies=[Depends(require_api_key)])
+@app.get("/api/v1/wireguard/configs/{client_id}/status", dependencies=[Depends(require_authenticated_request)])
 def wireguard_status(client_id: int, db: Session = Depends(get_db)):
     return get_wireguard_peer_status(get_client_or_404(db, client_id))
 
 
-@app.post("/api/v1/wireguard/configs/{client_id}/revoke", dependencies=[Depends(require_api_key)])
+@app.post("/api/v1/wireguard/configs/{client_id}/revoke", dependencies=[Depends(require_authenticated_request)])
 def revoke_wireguard_config(client_id: int, db: Session = Depends(get_db)):
     return revoke_wireguard_peer(db, get_client_or_404(db, client_id))

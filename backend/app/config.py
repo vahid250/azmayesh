@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_env: str = "development"
+    app_env: str = "production"
     mock_mode: bool = True
     api_key: str = ""
     telegram_bot_token: str = ""

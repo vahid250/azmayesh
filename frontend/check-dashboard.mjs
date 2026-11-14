@@ -16,7 +16,9 @@ const required = [
   'id="rmaLoadConfigsBtn"',
   'id="rmaCreateConfigBtn"',
   'id="rmaConfigsList"',
-  'id="rmaIssuedConfig"'
+  'id="rmaIssuedConfig"',
+  "telegramApp.ready()",
+  "telegramApp.expand()"
 ];
 for (const marker of required) {
   if (!html.includes(marker)) throw new Error("Dashboard integration marker missing: " + marker);

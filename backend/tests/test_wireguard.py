@@ -97,3 +97,34 @@ def test_mock_endpoint_marks_config_as_non_connectable_and_encrypts_storage(monk
     finally:
         app.dependency_overrides.clear()
         test_engine.dispose()
+
+
+
+def test_telegram_init_data_signature_and_expiry(monkeypatch):
+    import hashlib
+    import hmac
+    import time
+    from urllib.parse import urlencode
+    import pytest
+    from fastapi import HTTPException
+    from app.config import settings
+    from app.security import verify_telegram_init_data
+
+    token = "123456:unit-test-token"
+    monkeypatch.setattr(settings, "telegram_bot_token", token)
+    auth_date = str(int(time.time()))
+    values = {
+        "auth_date": auth_date,
+        "query_id": "AAE-unit-test",
+        "user": '{"id":12345,"first_name":"Test"}',
+    }
+    secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    data_check = "\n".join(f"{k}={v}" for k, v in sorted(values.items()))
+    values["hash"] = hmac.new(secret, data_check.encode(), hashlib.sha256).hexdigest()
+    verified = verify_telegram_init_data(urlencode(values))
+    assert verified["user"]["id"] == 12345
+
+    values["hash"] = "0" * 64
+    with pytest.raises(HTTPException) as exc:
+        verify_telegram_init_data(urlencode(values))
+    assert exc.value.status_code == 401

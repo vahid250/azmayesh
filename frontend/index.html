@@ -24,6 +24,16 @@
     <span class="text-[10px] text-outline">اتصال API و اتصال واقعی VPN دو آزمون جداگانه‌اند.</span>
     <button id="rmaApiCheckBtn" type="button" class="shrink-0 px-3 py-2 rounded-lg bg-surface-container-high border border-outline-variant/50 text-primary text-xs font-semibold">بررسی دوباره</button>
   </div>
+  <div class="flex flex-wrap gap-2">
+    <button id="rmaLoadConfigsBtn" type="button" class="px-3 py-2 rounded-lg bg-surface-container-high border border-outline-variant/50 text-primary text-xs font-semibold">فهرست کانفیگ‌های من</button>
+    <button id="rmaCreateConfigBtn" type="button" disabled class="px-3 py-2 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs font-semibold disabled:opacity-40">صدور کانفیگ واقعی</button>
+  </div>
+  <div id="rmaConfigsList" class="hidden flex flex-col gap-2"></div>
+  <div id="rmaIssuedConfigBox" class="hidden flex flex-col gap-2">
+    <p class="text-xs text-secondary">کانفیگ خصوصی است؛ آن را فقط در دستگاه خود ذخیره کنید.</p>
+    <textarea id="rmaIssuedConfig" readonly rows="8" class="w-full rounded-lg bg-surface-container-lowest border border-outline-variant/40 p-2 text-[10px] font-mono text-left" dir="ltr"></textarea>
+    <button id="rmaCopyConfigBtn" type="button" class="self-start px-3 py-2 rounded-lg bg-surface-container-high border border-outline-variant/50 text-primary text-xs font-semibold">کپی کانفیگ</button>
+  </div>
 </section>
 <!-- Protocol & Security Status Ribbon -->
 <div class="w-full bg-surface-container-high rounded-xl p-space-sm flex flex-col gap-2.5 shadow-md relative overflow-hidden border border-primary/30" id="protocolSelectorSection"><div class="flex items-center justify-between"><div class="flex items-center gap-space-sm"><div class="w-8 h-8 rounded-lg bg-tertiary/15 flex items-center justify-center text-tertiary"><span class="material-symbols-outlined text-[20px]">security</span></div><div class="flex flex-col text-right"><div class="flex items-center gap-1.5"><span class="font-headline-sm text-headline-sm text-on-surface font-semibold">انتخاب ۳‌گانه کلاینت و پروتکل اتصال</span><span class="text-[11px] bg-secondary/20 text-secondary px-1.5 py-0.2 rounded font-bold">نیازمند آزمون واقعی</span></div><span class="text-[11px] text-on-surface-variant">اعتبار هر کانفیگ پس از ثبت Peer و آزمون واقعی اتصال تأیید می‌شود</span></div></div><div class="flex items-center gap-1 text-tertiary font-label-md text-label-md bg-tertiary/10 px-2 py-0.5 rounded-full"><span class="material-symbols-outlined text-[15px]">verified</span><span>آزمون واقعی پیش از صدور در حال تکمیل</span></div></div><div class="grid grid-cols-3 gap-1.5 pt-1"><div class="p-2.5 rounded-lg bg-surface-container border-2 border-primary flex flex-col gap-1 cursor-pointer transition-all shadow-sm" id="proto-wg"><div class="flex items-center justify-between"><span class="font-code-sm text-code-sm text-primary font-bold">وایرگارد</span><span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span></div><span class="text-[11px] text-on-surface font-semibold">WireGuard / Amnezia</span><span class="text-[10px] text-tertiary dir-ltr truncate">پینگ فوق‌پایین • UDP Obf</span><div class="mt-1 flex items-center justify-between text-[10px] text-on-surface-variant border-t border-outline-variant/30 pt-1"><span>تضمین پینگ</span><span class="text-tertiary font-bold dir-ltr">~28ms</span></div></div><div class="p-2.5 rounded-lg bg-surface-container-lowest/60 border border-outline-variant/40 hover:border-primary/60 flex flex-col gap-1 cursor-pointer transition-all" id="proto-v2ray"><div class="flex items-center justify-between"><span class="font-code-sm text-code-sm text-on-surface font-bold">ویتوری</span><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span></div><span class="text-[11px] text-on-surface font-semibold">V2Ray / VLESS</span><span class="text-[10px] text-secondary dir-ltr truncate">Reality • Anti-DPI TLS</span><div class="mt-1 flex items-center justify-between text-[10px] text-on-surface-variant border-t border-outline-variant/30 pt-1"><span>تضمین پینگ</span><span class="text-secondary font-bold dir-ltr">~34ms</span></div></div><div class="p-2.5 rounded-lg bg-surface-container-lowest/60 border border-outline-variant/40 hover:border-primary/60 flex flex-col gap-1 cursor-pointer transition-all" id="proto-napster"><div class="flex items-center justify-between"><span class="font-code-sm text-code-sm text-on-surface font-bold">نپستر</span><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span></div><span class="text-[11px] text-on-surface font-semibold">NapsternetV</span><span class="text-[10px] text-tertiary dir-ltr truncate">Psiphon Cloak • v2ray</span><div class="mt-1 flex items-center justify-between text-[10px] text-on-surface-variant border-t border-outline-variant/30 pt-1"><span>تضمین پینگ</span><span class="text-tertiary font-bold dir-ltr">~39ms</span></div></div></div></div>
@@ -681,7 +691,22 @@ document.addEventListener("DOMContentLoaded", function () {
   const detail = document.getElementById("rmaApiStatusDetail");
   const button = document.getElementById("rmaApiCheckBtn");
   const headerLabel = document.getElementById("backendConnectionLabel");
+  const loadConfigsButton = document.getElementById("rmaLoadConfigsBtn");
+  const createConfigButton = document.getElementById("rmaCreateConfigBtn");
+  const configsList = document.getElementById("rmaConfigsList");
+  const issuedBox = document.getElementById("rmaIssuedConfigBox");
+  const issuedConfig = document.getElementById("rmaIssuedConfig");
+  const copyConfigButton = document.getElementById("rmaCopyConfigBtn");
+  let realProvisioningReady = false;
   if (!badge || !detail || !button) return;
+
+  function formatBytes(value) {
+    if (!value) return "0 B";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let amount = value, unit = 0;
+    while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit++; }
+    return amount.toFixed(unit === 0 ? 0 : 1) + " " + units[unit];
+  }
 
   async function checkBackend() {
     button.disabled = true;
@@ -690,6 +715,8 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       if (!window.RMAApi) throw new Error("ماژول ارتباط با API بارگذاری نشده است.");
       const health = await window.RMAApi.health();
+      realProvisioningReady = !health.mock_mode && !!health.real_provisioning_configured;
+      if (createConfigButton) createConfigButton.disabled = !realProvisioningReady;
       if (health.mock_mode) {
         badge.textContent = "بک‌اند پاسخ می‌دهد • آزمایشی";
         badge.className = "text-[10px] px-2 py-1 rounded-full bg-secondary/15 text-secondary";
@@ -715,6 +742,87 @@ document.addEventListener("DOMContentLoaded", function () {
       button.disabled = false;
       button.textContent = "بررسی دوباره";
     }
+  }
+
+  if (loadConfigsButton) {
+    loadConfigsButton.addEventListener("click", async function () {
+      configsList.classList.remove("hidden");
+      configsList.textContent = "در حال دریافت فهرست...";
+      try {
+        const items = await window.RMAApi.listWireGuardConfigs();
+        configsList.textContent = "";
+        if (!items.length) {
+          configsList.textContent = "هنوز کانفیگی برای این حساب ثبت نشده است.";
+          return;
+        }
+        items.forEach(function (item) {
+          const card = document.createElement("div");
+          card.className = "rounded-lg bg-surface-container-lowest border border-outline-variant/30 p-2 flex flex-col gap-1";
+          const title = document.createElement("div");
+          title.className = "text-xs text-on-surface font-semibold";
+          title.textContent = item.client_name + " • " + item.client_ip;
+          const state = document.createElement("div");
+          state.className = "text-[10px] text-outline";
+          state.textContent = "وضعیت ثبت‌شده: " + item.state;
+          card.appendChild(title);
+          card.appendChild(state);
+          if (item.state !== "revoked") {
+            const statusButton = document.createElement("button");
+            statusButton.type = "button";
+            statusButton.className = "self-start mt-1 px-2 py-1 rounded bg-surface-container-high text-primary text-[10px]";
+            statusButton.textContent = "بررسی Handshake و ترافیک";
+            statusButton.addEventListener("click", async function () {
+              statusButton.disabled = true;
+              try {
+                const status = await window.RMAApi.getWireGuardStatus(item.id);
+                state.textContent = "Handshake: " + (status.handshake_seen ? "مشاهده شد" : "مشاهده نشده") +
+                  " • RX: " + formatBytes(status.rx_bytes) + " • TX: " + formatBytes(status.tx_bytes);
+              } catch (error) {
+                state.textContent = error.message;
+              } finally {
+                statusButton.disabled = false;
+              }
+            });
+            card.appendChild(statusButton);
+          }
+          configsList.appendChild(card);
+        });
+      } catch (error) {
+        configsList.textContent = error.message || "دریافت فهرست ناموفق بود.";
+      }
+    });
+  }
+
+  if (createConfigButton) {
+    createConfigButton.addEventListener("click", async function () {
+      if (!realProvisioningReady) return;
+      createConfigButton.disabled = true;
+      createConfigButton.textContent = "در حال صدور...";
+      try {
+        const result = await window.RMAApi.createWireGuardConfig("R&MA Android");
+        issuedConfig.value = result.config;
+        issuedBox.classList.remove("hidden");
+        detail.textContent = "کانفیگ ساخته و Peer ثبت شد؛ هنوز باید Handshake، RX/TX و دسترسی اینترنت روی گوشی آزمایش شوند.";
+      } catch (error) {
+        detail.textContent = error.message || "صدور کانفیگ ناموفق بود.";
+      } finally {
+        createConfigButton.disabled = !realProvisioningReady;
+        createConfigButton.textContent = "صدور کانفیگ واقعی";
+      }
+    });
+  }
+
+  if (copyConfigButton) {
+    copyConfigButton.addEventListener("click", async function () {
+      try {
+        await navigator.clipboard.writeText(issuedConfig.value);
+        copyConfigButton.textContent = "کپی شد";
+      } catch (_) {
+        issuedConfig.focus();
+        issuedConfig.select();
+        copyConfigButton.textContent = "متن را انتخاب و کپی کنید";
+      }
+    });
   }
 
   button.addEventListener("click", checkBackend);

@@ -36,6 +36,10 @@ jobs:
           node-version: "22"
       - name: Check dashboard API client syntax
         run: node --check ../frontend/rma-api.js
+      - name: Check Cloudflare Pages proxy syntax
+        run: |
+          node --input-type=module --check < "../frontend/functions/api/[[path]].js"
+          node --input-type=module --check < ../frontend/functions/health.js
       - name: Check dashboard integration and inline scripts
         run: node ../frontend/check-dashboard.mjs
       - name: Run tests

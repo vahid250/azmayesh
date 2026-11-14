@@ -2,6 +2,7 @@ import base64
 import ipaddress
 import shutil
 import subprocess
+from urllib.parse import urlsplit
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
 from fastapi import HTTPException
@@ -51,6 +52,14 @@ def _validate_real_server() -> None:
         return
     if not settings.wg_server_endpoint or not settings.wg_server_public_key:
         raise HTTPException(status_code=503, detail="Real WireGuard endpoint/public key are not configured")
+    try:
+        endpoint = urlsplit("//" + settings.wg_server_endpoint)
+        endpoint.hostname and endpoint.port
+        decoded_key = base64.b64decode(settings.wg_server_public_key, validate=True)
+        if not endpoint.hostname or not endpoint.port or len(decoded_key) != 32:
+            raise ValueError("invalid endpoint or public key")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=503, detail="WireGuard server endpoint or public key is invalid") from exc
     if not shutil.which("wg"):
         raise HTTPException(status_code=503, detail="wireguard-tools (wg) is not installed")
     try:

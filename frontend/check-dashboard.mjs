@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const html = fs.readFileSync(path.join(here, "index.html"), "utf8");
-const apiClient = fs.readFileSync(path.join(here, "rma-api.js"), "utf8");\nconst apiProxy = fs.readFileSync(path.join(here, "functions", "api", "[[path]].js"), "utf8");\nconst healthProxy = fs.readFileSync(path.join(here, "functions", "health.js"), "utf8");
+const apiClient = fs.readFileSync(path.join(here, "rma-api.js"), "utf8");
+const apiProxy = fs.readFileSync(path.join(here, "functions", "api", "[[path]].js"), "utf8");
+const healthProxy = fs.readFileSync(path.join(here, "functions", "health.js"), "utf8");
 
 const required = [
   'name="rma-api-base"',

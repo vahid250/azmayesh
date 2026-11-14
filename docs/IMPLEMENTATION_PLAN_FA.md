@@ -73,10 +73,11 @@
 - [x] اجرای GitHub Actions؛ اجرای نهایی شماره 21 با شناسه 43622009496 موفق شد: نصب وابستگی‌ها، compileall و pytest همگی سبز شدند.
 
 ### تأیید خودکار آخرین نسخه
-- [x] GitHub Actions run `43622344811` موفق شد.
+- [x] GitHub Actions run `43622499987` موفق شد.
 - [x] نصب وابستگی‌ها و `compileall` موفق.
 - [x] بررسی نحوی `frontend/rma-api.js` موفق.
-- [x] بررسی markerهای HTML و parse تمام scriptهای inline موفق.
+- [x] بررسی markerهای HTML و parse چهار بلوک script داخلی موفق.
+- [x] کنترل خودکار نبود اعداد پینگ/مصرف/پایداری ساختگی موفق.
 - [x] آزمون‌های بک‌اند موفق: ۶ passed، ۱ warning.
 
 ### مرز آمادگی فعلی

@@ -74,7 +74,8 @@ async def telegram_webhook(
     if not isinstance(chat_id, int) or not isinstance(text, str):
         return {"ok": True}
 
-    command = text.strip().split(maxsplit=1)[0].split("@", 1)[0].lower()
+    parts = text.strip().split(maxsplit=1)
+    command = parts[0].split("@", 1)[0].lower() if parts else ""
     if command == "/start":
         await send_telegram_message(chat_id, build_start_reply(settings.mini_app_url))
 

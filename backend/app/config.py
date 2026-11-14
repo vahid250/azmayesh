@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     mock_mode: bool = True
     api_key: str = ""
+    telegram_bot_token: str = ""
+    telegram_init_data_max_age_seconds: int = 86400
     encryption_key: str = ""
     database_url: str = "sqlite:///./rma_backend.db"
     wg_interface: str = "wg0"

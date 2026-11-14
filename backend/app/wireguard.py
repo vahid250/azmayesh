@@ -141,3 +141,77 @@ def issue_wireguard_config(db: Session, client_name: str) -> dict:
             "Peer registered. Handshake and internet traffic still require client-side verification."
         ),
     }
+
+
+
+def revoke_wireguard_peer(db: Session, row: WireGuardClient) -> dict:
+    if row.state == "revoked":
+        return {"id": row.id, "state": "revoked", "revoked": True}
+    if not settings.mock_mode:
+        _validate_real_server()
+        try:
+            subprocess.run(
+                ["wg", "set", settings.wg_interface, "peer", row.public_key, "remove"],
+                check=True, capture_output=True, text=True, timeout=10,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+            raise HTTPException(status_code=502, detail="WireGuard peer removal failed; record remains unchanged") from exc
+    row.state = "revoked"
+    db.commit()
+    return {"id": row.id, "state": row.state, "revoked": True}
+
+
+def get_wireguard_peer_status(row: WireGuardClient) -> dict:
+    if settings.mock_mode:
+        return {
+            "id": row.id,
+            "state": row.state,
+            "handshake_seen": False,
+            "latest_handshake_epoch": None,
+            "rx_bytes": 0,
+            "tx_bytes": 0,
+            "connectivity_verified": False,
+            "notice": "Mock mode has no live WireGuard server; no handshake or traffic can be measured.",
+        }
+    _validate_real_server()
+    try:
+        result = subprocess.run(
+            ["wg", "show", settings.wg_interface, "dump"],
+            check=True, capture_output=True, text=True, timeout=8,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        raise HTTPException(status_code=502, detail="Could not read WireGuard peer status") from exc
+
+    peer = None
+    for line in result.stdout.splitlines()[1:]:
+        fields = line.split("\t")
+        if len(fields) >= 8 and fields[0] == row.public_key:
+            peer = fields
+            break
+    if peer is None:
+        return {
+            "id": row.id,
+            "state": row.state,
+            "handshake_seen": False,
+            "latest_handshake_epoch": None,
+            "rx_bytes": 0,
+            "tx_bytes": 0,
+            "connectivity_verified": False,
+            "notice": "Peer is not present in the live WireGuard interface.",
+        }
+    try:
+        handshake = int(peer[4])
+        rx_bytes = int(peer[5])
+        tx_bytes = int(peer[6])
+    except (ValueError, IndexError) as exc:
+        raise HTTPException(status_code=502, detail="WireGuard returned an unreadable peer status") from exc
+    return {
+        "id": row.id,
+        "state": row.state,
+        "handshake_seen": handshake > 0,
+        "latest_handshake_epoch": handshake or None,
+        "rx_bytes": rx_bytes,
+        "tx_bytes": tx_bytes,
+        "connectivity_verified": False,
+        "notice": "Handshake and byte counters are server observations only; DNS and HTTPS must still be tested on the client.",
+    }

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const html = fs.readFileSync(path.join(here, "index.html"), "utf8");
+const apiClient = fs.readFileSync(path.join(here, "rma-api.js"), "utf8");
 
 const required = [
   'name="rma-api-base"',
@@ -13,13 +14,13 @@ const required = [
   'id="rmaLoadConfigsBtn"',
   'id="rmaCreateConfigBtn"',
   'id="rmaConfigsList"',
-  'id="rmaIssuedConfig"',
-  'X-Telegram-Init-Data'
+  'id="rmaIssuedConfig"'
 ];
 for (const marker of required) {
-  if (!html.includes(marker) && marker !== "X-Telegram-Init-Data") {
-    throw new Error("Dashboard integration marker missing: " + marker);
-  }
+  if (!html.includes(marker)) throw new Error("Dashboard integration marker missing: " + marker);
+}
+if (!apiClient.includes("X-Telegram-Init-Data")) {
+  throw new Error("Telegram initData header missing from API client.");
 }
 
 const inlineScripts = [...html.matchAll(/<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi)];

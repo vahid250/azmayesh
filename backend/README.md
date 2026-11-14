@@ -44,4 +44,6 @@ curl -X POST http://127.0.0.1:8000/api/v1/wireguard/configs \\
 - فایل `.env`، پایگاه داده محلی و کلیدهای رمزنگاری را در Git ثبت نکنید.
 - private key و متن کامل کانفیگ در دیتابیس به‌صورت Fernet-encrypted ذخیره می‌شوند.
 - endpoint در حالت mock عمداً `mock.invalid` است تا به‌اشتباه به‌عنوان کانفیگ واقعی استفاده نشود.
-- احراز هویت این مرحله API key آزمایشگاهی است؛ Telegram WebApp initData در فاز بعدی اضافه می‌شود.
+- احراز هویت WebApp با اعتبارسنجی HMAC داده‌های Telegram initData پیاده‌سازی شده است؛ توکن ربات فقط در متغیر محیطی سرور قرار می‌گیرد.
+- API key صرفاً برای محیط غیرتولیدی و تست محلی پذیرفته می‌شود؛ در APP_ENV=production مسیر API key غیرفعال است.
+- فرانت‌اند باید مقدار خام Telegram.WebApp.initData را در هدر X-Telegram-Init-Data ارسال کند؛ هرگز bot token یا API key را در HTML/JavaScript قرار ندهید.

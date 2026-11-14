@@ -40,6 +40,7 @@ def test_mock_endpoint_marks_config_as_non_connectable_and_encrypts_storage(monk
         finally:
             db.close()
 
+    monkeypatch.setattr(settings, "app_env", "development")
     monkeypatch.setattr(settings, "api_key", "unit-test-api-key")
     monkeypatch.setattr(settings, "encryption_key", Fernet.generate_key().decode())
     monkeypatch.setattr(settings, "mock_mode", True)

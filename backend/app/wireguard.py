@@ -77,16 +77,16 @@ def issue_wireguard_config(db: Session, client_name: str) -> dict:
             endpoint = settings.wg_server_endpoint
 
         config = (
-            "[Interface]\\n"
-            f"PrivateKey = {private_key}\\n"
-            f"Address = {client_ip}\\n"
-            f"DNS = {settings.wg_dns}\\n"
-            f"MTU = {settings.wg_mtu}\\n\\n"
-            "[Peer]\\n"
-            f"PublicKey = {server_public_key}\\n"
-            f"Endpoint = {endpoint}\\n"
-            "AllowedIPs = 0.0.0.0/0, ::/0\\n"
-            "PersistentKeepalive = 25\\n"
+            "[Interface]\n"
+            f"PrivateKey = {private_key}\n"
+            f"Address = {client_ip}\n"
+            f"DNS = {settings.wg_dns}\n"
+            f"MTU = {settings.wg_mtu}\n\n"
+            "[Peer]\n"
+            f"PublicKey = {server_public_key}\n"
+            f"Endpoint = {endpoint}\n"
+            "AllowedIPs = 0.0.0.0/0, ::/0\n"
+            "PersistentKeepalive = 25\n"
         )
         row = WireGuardClient(
             client_name=clean_name,

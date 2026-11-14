@@ -829,4 +829,18 @@ document.addEventListener("DOMContentLoaded", function () {
   checkBackend();
 });
 </script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const telegramApp = window.Telegram && window.Telegram.WebApp;
+  if (!telegramApp) return;
+  telegramApp.ready();
+  telegramApp.expand();
+  if (typeof telegramApp.setHeaderColor === "function") {
+    telegramApp.setHeaderColor("#0c141f");
+  }
+  if (typeof telegramApp.setBackgroundColor === "function") {
+    telegramApp.setBackgroundColor("#0c141f");
+  }
+});
+</script>
 </body></html>

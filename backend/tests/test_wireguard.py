@@ -69,6 +69,8 @@ def test_mock_endpoint_marks_config_as_non_connectable_and_encrypts_storage(monk
         )
         assert fetched.status_code == 200
         assert fetched.json()["config"] == payload["config"]
+        listed = client.get("/api/v1/wireguard/configs", headers={"X-API-Key": "unit-test-api-key"})
+        assert listed.status_code == 200 and len(listed.json()) == 1
 
         status = client.get(
             f"/api/v1/wireguard/configs/{client_id}/status",

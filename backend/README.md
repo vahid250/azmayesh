@@ -27,11 +27,21 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 در حالت پیش‌فرض `MOCK_MODE=true` است. کانفیگ تولیدشده در این حالت صرفاً برای تست قالب و مسیر برنامه است و به سرور واقعی وصل نمی‌شود. endpoint آزمایشی:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/wireguard/configs \\
-  -H 'Content-Type: application/json' \\
-  -H 'X-API-Key: YOUR_API_KEY' \\
+curl -X POST http://127.0.0.1:8000/api/v1/wireguard/configs \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: YOUR_API_KEY' \
   -d '{"client_name":"RMA test device"}'
 ```
+
+## ربات تلگرام و دستور /start
+
+مسیر `POST /telegram/webhook` به‌روزرسانی‌های تلگرام را دریافت می‌کند. درخواست بدون هدر معتبر `X-Telegram-Bot-Api-Secret-Token` رد می‌شود. برای فعال‌سازی آن، این متغیرهای محیطی را در میزبان امن تنظیم کنید:
+
+- `TELEGRAM_BOT_TOKEN`: توکن BotFather؛ فقط در secrets میزبان، نه در Git یا کد.
+- `TELEGRAM_WEBHOOK_SECRET`: یک راز تصادفی جداگانه برای اعتبارسنجی webhook.
+- `MINI_APP_URL`: فعلاً خالی بماند؛ فقط پس از میزبانی واقعی فرانت‌اند با HTTPS تنظیم شود.
+
+تا زمانی که URL معتبر HTTPS وجود نداشته باشد، پاسخ `/start` پیام خوش‌آمدگویی می‌فرستد و دکمه مینی‌اپ نمایش نمی‌دهد. پس از استقرار روی میزبان HTTPS، باید webhook تلگرام با secret token تنظیم شود. در این تغییر هیچ webhook ثبت یا هیچ سرویسی deploy نشده است.
 
 ## حالت سرور واقعی
 

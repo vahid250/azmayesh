@@ -22,3 +22,10 @@ def get_cipher() -> Fernet:
 
 def encrypt_secret(value: str) -> str:
     return get_cipher().encrypt(value.encode("utf-8")).decode("ascii")
+
+
+def decrypt_secret(value: str) -> str:
+    try:
+        return get_cipher().decrypt(value.encode("ascii")).decode("utf-8")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Stored encrypted data could not be decrypted") from exc

@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.config import settings
-from app.models import WireGuardClient
+from app.models import WireGuardClient, WireGuardClientOwner
 from app.security import encrypt_secret
 
 
@@ -68,7 +68,7 @@ def _validate_real_server() -> None:
         raise HTTPException(status_code=503, detail="Configured WireGuard interface is not available") from exc
 
 
-def issue_wireguard_config(db: Session, client_name: str) -> dict:
+def issue_wireguard_config(db: Session, client_name: str, owner_id: str) -> dict:
     _validate_real_server()
     clean_name = " ".join(client_name.strip().split())[:64]
     if not clean_name:
@@ -107,6 +107,8 @@ def issue_wireguard_config(db: Session, client_name: str) -> dict:
         )
         db.add(row)
         try:
+            db.flush()
+            db.add(WireGuardClientOwner(client_id=row.id, telegram_user_id=owner_id))
             db.commit()
             db.refresh(row)
             break

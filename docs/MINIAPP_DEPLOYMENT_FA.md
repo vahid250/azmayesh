@@ -16,8 +16,8 @@
 1. وارد حساب Cloudflare شو و از Workers & Pages یک Pages project بساز.
 2. مخزن GitHub آزمایشی `vahid250/azmayesh` را انتخاب کن.
 3. شاخه انتشار را `work/rma-backend-dashboard` انتخاب کن.
-4. مقدار Build command را خالی بگذار؛ این پروژه فرانت‌اند فعلاً build step ندارد.
-5. مقدار Build output directory را `frontend` قرار بده.
+4. مقدار Root directory را `frontend` قرار بده.
+5. مقدار Build command را خالی و Build output directory را `.` قرار بده؛ مسیر خروجی نسبت به Root directory محاسبه می‌شود.
 6. پس از انتشار، Cloudflare یک نشانی HTTPS می‌دهد. تا پیش از اتصال بک‌اند، بازشدن صفحه فقط رابط کاربری را تأیید می‌کند.
 
 ## اتصال آینده بک‌اند
@@ -65,7 +65,7 @@ Cloudflare Pages میزبانی رابط کاربری و توابع سبک HTTP 
 - پوشه سرویس: `backend`
 - محیط اجرا: Python
 - دستور ساخت: `pip install -r requirements.txt`
-- دستور اجرا: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- دستور اجرا: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` (ابتدا مهاجرت‌های دیتابیس اجرا می‌شوند)
 - مسیر بررسی سلامت: `/health`
 - پلن پیشنهادی: Free
 - حالت VPN: عمداً `MOCK_MODE=true`

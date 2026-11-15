@@ -1,0 +1,12 @@
+{
+  "name": "rma-api",
+  "main": "worker.py",
+  "compatibility_date": "2026-11-16",
+  "compatibility_flags": ["python_workers"],
+  "workers_dev": true,
+  "vars": {
+    "APP_ENV": "production",
+    "MOCK_MODE": "true",
+    "TELEGRAM_INIT_DATA_MAX_AGE_SECONDS": "3600"
+  }
+}

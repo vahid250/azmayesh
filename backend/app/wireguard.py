@@ -1,14 +1,17 @@
 import base64
 import ipaddress
+import os
 import shutil
 import subprocess
 from urllib.parse import urlsplit
+
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
 from app.config import settings
 from app.models import WireGuardClient, WireGuardClientOwner
 from app.security import encrypt_secret
@@ -50,6 +53,11 @@ def _next_client_ip(db: Session) -> str:
 def _validate_real_server() -> None:
     if settings.mock_mode:
         return
+    if os.environ.get("RMA_CLOUDFLARE_WORKER") == "1":
+        raise HTTPException(
+            status_code=503,
+            detail="Real WireGuard provisioning is not available inside Cloudflare Workers; use a separate WireGuard server.",
+        )
     if not settings.wg_server_endpoint or not settings.wg_server_public_key:
         raise HTTPException(status_code=503, detail="Real WireGuard endpoint/public key are not configured")
     try:
@@ -152,7 +160,6 @@ def issue_wireguard_config(db: Session, client_name: str, owner_id: str) -> dict
             "Peer registered. Handshake and internet traffic still require client-side verification."
         ),
     }
-
 
 
 def revoke_wireguard_peer(db: Session, row: WireGuardClient) -> dict:

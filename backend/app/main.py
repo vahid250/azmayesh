@@ -1,20 +1,34 @@
+import os
+
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from app.config import settings
 from app.database import Base, engine, get_db
 from app.models import WireGuardClient, WireGuardClientOwner
 from app.security import decrypt_secret, require_authenticated_request
-from app.wireguard import _validate_real_server, get_wireguard_peer_status, issue_wireguard_config, revoke_wireguard_peer
+from app.wireguard import (
+    _validate_real_server,
+    get_wireguard_peer_status,
+    issue_wireguard_config,
+    revoke_wireguard_peer,
+)
 from app.telegram_bot import router as telegram_router
 from app import models  # noqa: F401 - register ORM metadata
 
-app = FastAPI(title="R&MA Backend Lab", version="0.4.0")
+
+app = FastAPI(title="R&MA Backend Lab", version="0.5.0")
 app.include_router(telegram_router)
-# SQLite is used for local development and lightweight tests. PostgreSQL
-# deployments must be changed only through reviewed Alembic migrations.
-if engine.dialect.name == "sqlite":
+
+# SQLite is used only for local development and lightweight tests. A Worker
+# must use the explicitly configured Hyperdrive binding; never create an
+# ephemeral SQLite database in the Worker filesystem.
+if (
+    os.environ.get("RMA_CLOUDFLARE_WORKER") != "1"
+    and engine.dialect.name == "sqlite"
+):
     Base.metadata.create_all(bind=engine)
 
 
@@ -49,8 +63,8 @@ def health():
 
     if not settings.mock_mode:
         try:
-            # Check the endpoint/key, wireguard-tools binary, and live local interface.
-            # This is a provisioning readiness check, not proof of client connectivity.
+            # In Cloudflare Workers real provisioning is deliberately disabled;
+            # WireGuard commands belong on a separate server.
             _validate_real_server()
             provisioning_ready = True
         except HTTPException as exc:

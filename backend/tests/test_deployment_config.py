@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import json
+import tomllib
 import yaml
 
 
@@ -28,8 +30,6 @@ def test_render_blueprint_targets_experimental_branch_and_safe_mock_mode():
 
 
 def test_cloudflare_pages_config_serves_frontend_root_and_functions():
-    import tomllib
-
     frontend_dir = Path(__file__).resolve().parents[2] / "frontend"
     config = tomllib.loads((frontend_dir / "wrangler.toml").read_text(encoding="utf-8"))
 
@@ -39,3 +39,20 @@ def test_cloudflare_pages_config_serves_frontend_root_and_functions():
     assert (frontend_dir / "index.html").is_file()
     assert (frontend_dir / "functions" / "api" / "[[path]].js").is_file()
     assert (frontend_dir / "functions" / "health.js").is_file()
+
+
+def test_cloudflare_python_worker_config_keeps_mock_mode_and_no_placeholder_binding():
+    backend_dir = Path(__file__).resolve().parents[1]
+    config = json.loads((backend_dir / "wrangler.jsonc").read_text(encoding="utf-8"))
+
+    assert config["name"] == "rma-api"
+    assert config["main"] == "worker.py"
+    assert "python_workers" in config["compatibility_flags"]
+    assert config["vars"]["MOCK_MODE"] == "true"
+    assert "hyperdrive" not in config
+
+    project = tomllib.loads((backend_dir / "pyproject.toml").read_text(encoding="utf-8"))
+    assert project["project"]["requires-python"] == ">=3.13"
+    dependencies = project["project"]["dependencies"]
+    for required in ("fastapi", "httpx", "pydantic-settings", "sqlalchemy", "cryptography", "psycopg[binary]"):
+        assert required in dependencies

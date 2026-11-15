@@ -52,3 +52,14 @@ jobs:
         run: node ../frontend/check-dashboard.mjs
       - name: Run tests
         run: PYTHONPATH=. pytest -q
+      - name: Set up Python 3.13 for Cloudflare Workers
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/pyproject.toml
+      - name: Validate Cloudflare Python Worker bundle (dry run)
+        run: uv run pywrangler deploy --dry-run

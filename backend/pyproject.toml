@@ -1,0 +1,22 @@
+[project]
+name = "rma-api-worker"
+version = "0.5.0"
+description = "R&MA FastAPI backend packaged for Cloudflare Python Workers"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "httpx",
+    "pydantic-settings",
+    "sqlalchemy",
+    "cryptography",
+    "psycopg[binary]",
+]
+
+[dependency-groups]
+dev = [
+    "workers-py",
+    "workers-runtime-sdk",
+]
+
+[tool.uv]
+package = false

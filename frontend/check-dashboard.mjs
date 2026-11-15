@@ -13,6 +13,7 @@ const required = [
   'name="rma-api-base"',
   'src="/rma-api.js"',
   'id="rmaApiStatusPanel"',
+  'id="rmaLabNotice"',
   'id="rmaLoadConfigsBtn"',
   'id="rmaCreateConfigBtn"',
   'id="rmaConfigsList"',
@@ -39,7 +40,12 @@ const forbiddenDemoClaims = [
   "مصرف: ۰ مگابایت",
   "10Gbps",
   "38 ms",
-  "100% OFFICIAL"
+  "100% OFFICIAL",
+  "پهنای‌باند نامحدود",
+  "پینگ فوق‌پایین",
+  "Reality • Anti-DPI TLS",
+  "صدور بدون وقفه کانفیگ اختصاصی",
+  "3 Online"
 ];
 for (const claim of forbiddenDemoClaims) {
   if (html.includes(claim)) throw new Error("Unverified dashboard claim remains: " + claim);

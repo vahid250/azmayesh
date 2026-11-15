@@ -7,7 +7,7 @@ from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool
 
-from app.config import settings
+from app.config import get_settings
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -24,7 +24,7 @@ def resolve_migration_database_url(database_url: str, direct_database_url: str |
     return normalize_database_url(direct_database_url or database_url)
 
 
-DATABASE_URL = normalize_database_url(settings.database_url)
+DATABASE_URL = normalize_database_url(get_settings().database_url)
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)

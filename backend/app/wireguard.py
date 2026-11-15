@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import get_settings
 from app.models import WireGuardClient, WireGuardClientOwner
 from app.security import encrypt_secret
 
@@ -33,7 +33,7 @@ def generate_keypair() -> tuple[str, str]:
 
 def _next_client_ip(db: Session) -> str:
     try:
-        network = ipaddress.ip_network(settings.wg_subnet, strict=True)
+        network = ipaddress.ip_network(get_settings().wg_subnet, strict=True)
     except ValueError as exc:
         raise HTTPException(status_code=503, detail="WG_SUBNET is invalid") from exc
     if network.version != 4 or network.num_addresses < 4:
@@ -51,19 +51,19 @@ def _next_client_ip(db: Session) -> str:
 
 
 def _validate_real_server() -> None:
-    if settings.mock_mode:
+    if get_settings().mock_mode:
         return
     if os.environ.get("RMA_CLOUDFLARE_WORKER") == "1":
         raise HTTPException(
             status_code=503,
             detail="Real WireGuard provisioning is not available inside Cloudflare Workers; use a separate WireGuard server.",
         )
-    if not settings.wg_server_endpoint or not settings.wg_server_public_key:
+    if not get_settings().wg_server_endpoint or not get_settings().wg_server_public_key:
         raise HTTPException(status_code=503, detail="Real WireGuard endpoint/public key are not configured")
     try:
-        endpoint = urlsplit("//" + settings.wg_server_endpoint)
+        endpoint = urlsplit("//" + get_settings().wg_server_endpoint)
         endpoint.hostname and endpoint.port
-        decoded_key = base64.b64decode(settings.wg_server_public_key, validate=True)
+        decoded_key = base64.b64decode(get_settings().wg_server_public_key, validate=True)
         if not endpoint.hostname or not endpoint.port or len(decoded_key) != 32:
             raise ValueError("invalid endpoint or public key")
     except (ValueError, TypeError) as exc:
@@ -71,7 +71,7 @@ def _validate_real_server() -> None:
     if not shutil.which("wg"):
         raise HTTPException(status_code=503, detail="wireguard-tools (wg) is not installed")
     try:
-        subprocess.run(["wg", "show", settings.wg_interface], check=True, capture_output=True, text=True, timeout=8)
+        subprocess.run(["wg", "show", get_settings().wg_interface], check=True, capture_output=True, text=True, timeout=8)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
         raise HTTPException(status_code=503, detail="Configured WireGuard interface is not available") from exc
 
@@ -86,19 +86,19 @@ def issue_wireguard_config(db: Session, client_name: str, owner_id: str) -> dict
     for attempt in range(5):
         client_ip = _next_client_ip(db)
         private_key, public_key = generate_keypair()
-        if settings.mock_mode:
+        if get_settings().mock_mode:
             server_public_key = "MOCK_ONLY_NO_REAL_SERVER_KEY"
             endpoint = "mock.invalid:51820"
         else:
-            server_public_key = settings.wg_server_public_key
-            endpoint = settings.wg_server_endpoint
+            server_public_key = get_settings().wg_server_public_key
+            endpoint = get_settings().wg_server_endpoint
 
         config = (
             "[Interface]\n"
             f"PrivateKey = {private_key}\n"
             f"Address = {client_ip}\n"
-            f"DNS = {settings.wg_dns}\n"
-            f"MTU = {settings.wg_mtu}\n\n"
+            f"DNS = {get_settings().wg_dns}\n"
+            f"MTU = {get_settings().wg_mtu}\n\n"
             "[Peer]\n"
             f"PublicKey = {server_public_key}\n"
             f"Endpoint = {endpoint}\n"
@@ -111,7 +111,7 @@ def issue_wireguard_config(db: Session, client_name: str, owner_id: str) -> dict
             public_key=public_key,
             private_key_encrypted=encrypt_secret(private_key),
             config_encrypted=encrypt_secret(config),
-            state="generated_mock" if settings.mock_mode else "pending_peer_registration",
+            state="generated_mock" if get_settings().mock_mode else "pending_peer_registration",
         )
         db.add(row)
         try:
@@ -125,10 +125,10 @@ def issue_wireguard_config(db: Session, client_name: str, owner_id: str) -> dict
             if attempt == 4:
                 raise HTTPException(status_code=409, detail="Could not allocate a unique client IP")
 
-    if not settings.mock_mode:
+    if not get_settings().mock_mode:
         try:
             subprocess.run(
-                ["wg", "set", settings.wg_interface, "peer", public_key, "allowed-ips", client_ip],
+                ["wg", "set", get_settings().wg_interface, "peer", public_key, "allowed-ips", client_ip],
                 check=True, capture_output=True, text=True, timeout=10,
             )
             row.state = "peer_registered"
@@ -136,7 +136,7 @@ def issue_wireguard_config(db: Session, client_name: str, owner_id: str) -> dict
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
             try:
                 subprocess.run(
-                    ["wg", "set", settings.wg_interface, "peer", public_key, "remove"],
+                    ["wg", "set", get_settings().wg_interface, "peer", public_key, "remove"],
                     check=False, capture_output=True, text=True, timeout=5,
                 )
             except Exception:
@@ -156,7 +156,7 @@ def issue_wireguard_config(db: Session, client_name: str, owner_id: str) -> dict
         "connectivity_verified": False,
         "notice": (
             "TEST CONFIG ONLY: no real server peer or internet route is configured"
-            if settings.mock_mode else
+            if get_settings().mock_mode else
             "Peer registered. Handshake and internet traffic still require client-side verification."
         ),
     }
@@ -165,11 +165,11 @@ def issue_wireguard_config(db: Session, client_name: str, owner_id: str) -> dict
 def revoke_wireguard_peer(db: Session, row: WireGuardClient) -> dict:
     if row.state == "revoked":
         return {"id": row.id, "state": "revoked", "revoked": True}
-    if not settings.mock_mode:
+    if not get_settings().mock_mode:
         _validate_real_server()
         try:
             subprocess.run(
-                ["wg", "set", settings.wg_interface, "peer", row.public_key, "remove"],
+                ["wg", "set", get_settings().wg_interface, "peer", row.public_key, "remove"],
                 check=True, capture_output=True, text=True, timeout=10,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
@@ -180,7 +180,7 @@ def revoke_wireguard_peer(db: Session, row: WireGuardClient) -> dict:
 
 
 def get_wireguard_peer_status(row: WireGuardClient) -> dict:
-    if settings.mock_mode:
+    if get_settings().mock_mode:
         return {
             "id": row.id,
             "state": row.state,
@@ -194,7 +194,7 @@ def get_wireguard_peer_status(row: WireGuardClient) -> dict:
     _validate_real_server()
     try:
         result = subprocess.run(
-            ["wg", "show", settings.wg_interface, "dump"],
+            ["wg", "show", get_settings().wg_interface, "dump"],
             check=True, capture_output=True, text=True, timeout=8,
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import get_settings
 from app.database import Base, engine, get_db
 from app.models import WireGuardClient, WireGuardClientOwner
 from app.security import decrypt_secret, require_authenticated_request
@@ -59,9 +59,9 @@ def get_client_or_404(db: Session, client_id: int, owner_id: str) -> WireGuardCl
 @app.get("/health")
 def health():
     provisioning_ready = False
-    provisioning_reason = "mock_mode_enabled" if settings.mock_mode else None
+    provisioning_reason = "mock_mode_enabled" if get_settings().mock_mode else None
 
-    if not settings.mock_mode:
+    if not get_settings().mock_mode:
         try:
             # In Cloudflare Workers real provisioning is deliberately disabled;
             # WireGuard commands belong on a separate server.
@@ -72,8 +72,8 @@ def health():
 
     return {
         "status": "ok",
-        "environment": settings.app_env,
-        "mock_mode": settings.mock_mode,
+        "environment": get_settings().app_env,
+        "mock_mode": get_settings().mock_mode,
         "real_provisioning_configured": provisioning_ready,
         "provisioning_reason": provisioning_reason,
         "connectivity_verified": False,

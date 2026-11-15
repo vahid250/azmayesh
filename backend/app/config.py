@@ -32,26 +32,15 @@ def _default_settings() -> Settings:
     return Settings()
 
 
+# Keep this normal Settings instance public for existing tests and local tools
+# that patch settings fields. Worker requests use the ContextVar override.
+settings = _default_settings()
 _request_settings: ContextVar[Settings | None] = ContextVar("rma_request_settings", default=None)
 
 
 def get_settings() -> Settings:
     """Return request-scoped Worker settings or the normal process settings."""
-    return _request_settings.get() or _default_settings()
-
-
-class _SettingsProxy:
-    """Keep existing settings.field call sites compatible with request-scoped config."""
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(get_settings(), name)
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        # Tests and local tooling historically patch settings attributes directly.
-        setattr(get_settings(), name, value)
-
-
-settings = _SettingsProxy()
+    return _request_settings.get() or settings
 
 
 _WORKER_ENV_FIELDS = {

@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from app.config import settings
+from app.config import get_settings
 
 router = APIRouter()
 
@@ -32,7 +32,7 @@ def build_start_reply(mini_app_url: str = "") -> dict:
 
 
 async def send_telegram_message(chat_id: int, reply: dict) -> None:
-    token = settings.telegram_bot_token.strip()
+    token = get_settings().telegram_bot_token.strip()
     if not token:
         raise HTTPException(status_code=503, detail="Telegram bot is not configured")
 
@@ -60,7 +60,7 @@ async def telegram_webhook(
     request: Request,
     x_telegram_bot_api_secret_token: str | None = Header(default=None),
 ):
-    expected = settings.telegram_webhook_secret.strip()
+    expected = get_settings().telegram_webhook_secret.strip()
     supplied = x_telegram_bot_api_secret_token or ""
     if not expected or not supplied or not hmac.compare_digest(expected, supplied):
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
@@ -77,6 +77,6 @@ async def telegram_webhook(
     parts = text.strip().split(maxsplit=1)
     command = parts[0].split("@", 1)[0].lower() if parts else ""
     if command == "/start":
-        await send_telegram_message(chat_id, build_start_reply(settings.mini_app_url))
+        await send_telegram_message(chat_id, build_start_reply(get_settings().mini_app_url))
 
     return {"ok": True}

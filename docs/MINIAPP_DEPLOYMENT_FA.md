@@ -69,6 +69,7 @@ Cloudflare Pages میزبانی رابط کاربری و توابع سبک HTTP 
 - دستور اجرا: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` (ابتدا مهاجرت‌های دیتابیس اجرا می‌شوند)
 - مسیر بررسی سلامت: `/health`
 - پلن پیشنهادی: Free
+- انتشار خودکار فقط پس از موفقیت بررسی‌های CI فعال است (`autoDeployTrigger: checksPass`)؛ بنابراین commit ناموفق نباید به سرویس آزمایشی منتشر شود.
 - حالت VPN: عمداً `MOCK_MODE=true`
 
 ### ۱) ساخت پایگاه‌داده Neon

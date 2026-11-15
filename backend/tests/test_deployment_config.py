@@ -20,8 +20,11 @@ def test_render_blueprint_targets_experimental_branch_and_safe_mock_mode():
     env = {item["key"]: item for item in service["envVars"]}
     assert env["APP_ENV"]["value"] == "production"
     assert env["MOCK_MODE"]["value"] == "true"
-    for key in ("DATABASE_URL", "DIRECT_DATABASE_URL", "ENCRYPTION_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"):
+    for key in ("DATABASE_URL", "DIRECT_DATABASE_URL"):
         assert env[key]["sync"] is False
+    assert env["ENCRYPTION_KEY"]["generateValue"] is True
+    assert "TELEGRAM_BOT_TOKEN" not in env
+    assert "TELEGRAM_WEBHOOK_SECRET" not in env
 
 
 def test_cloudflare_pages_config_serves_frontend_root_and_functions():

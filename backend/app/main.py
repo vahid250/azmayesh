@@ -6,7 +6,7 @@ from app.config import settings
 from app.database import Base, engine, get_db
 from app.models import WireGuardClient, WireGuardClientOwner
 from app.security import decrypt_secret, require_authenticated_request
-from app.wireguard import get_wireguard_peer_status, issue_wireguard_config, revoke_wireguard_peer
+from app.wireguard import _validate_real_server, get_wireguard_peer_status, issue_wireguard_config, revoke_wireguard_peer
 from app.telegram_bot import router as telegram_router
 from app import models  # noqa: F401 - register ORM metadata
 
@@ -41,13 +41,24 @@ def get_client_or_404(db: Session, client_id: int, owner_id: str) -> WireGuardCl
 
 @app.get("/health")
 def health():
+    provisioning_ready = False
+    provisioning_reason = "mock_mode_enabled" if settings.mock_mode else None
+
+    if not settings.mock_mode:
+        try:
+            # Check the endpoint/key, wireguard-tools binary, and live local interface.
+            # This is a provisioning readiness check, not proof of client connectivity.
+            _validate_real_server()
+            provisioning_ready = True
+        except HTTPException as exc:
+            provisioning_reason = exc.detail
+
     return {
         "status": "ok",
         "environment": settings.app_env,
         "mock_mode": settings.mock_mode,
-        "real_provisioning_configured": bool(
-            not settings.mock_mode and settings.wg_server_endpoint and settings.wg_server_public_key
-        ),
+        "real_provisioning_configured": provisioning_ready,
+        "provisioning_reason": provisioning_reason,
         "connectivity_verified": False,
     }
 

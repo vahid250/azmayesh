@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from app.config import activate_worker_settings, reset_worker_settings, settings
+from app.config import activate_worker_settings, get_settings, reset_worker_settings, settings
 from app.database import get_db
 from app.wireguard import _validate_real_server
 
@@ -21,11 +21,11 @@ def test_worker_settings_are_request_scoped_and_read_cloudflare_values():
     previous_app_env = settings.app_env
     token = activate_worker_settings(env)
     try:
-        assert settings.app_env == "production"
-        assert settings.mock_mode is True
-        assert settings.api_key == "worker-test-key"
-        assert settings.telegram_init_data_max_age_seconds == 3600
-        assert settings.encryption_key == "worker-test-encryption-key"
+        assert get_settings().app_env == "production"
+        assert get_settings().mock_mode is True
+        assert get_settings().api_key == "worker-test-key"
+        assert get_settings().telegram_init_data_max_age_seconds == 3600
+        assert get_settings().encryption_key == "worker-test-encryption-key"
     finally:
         reset_worker_settings(token)
     assert settings.app_env == previous_app_env

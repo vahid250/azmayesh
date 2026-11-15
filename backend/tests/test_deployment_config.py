@@ -20,7 +20,7 @@ def test_render_blueprint_targets_experimental_branch_and_safe_mock_mode():
     env = {item["key"]: item for item in service["envVars"]}
     assert env["APP_ENV"]["value"] == "production"
     assert env["MOCK_MODE"]["value"] == "true"
-    for key in ("DATABASE_URL", "ENCRYPTION_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"):
+    for key in ("DATABASE_URL", "DIRECT_DATABASE_URL", "ENCRYPTION_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"):
         assert env[key]["sync"] is False
 
 

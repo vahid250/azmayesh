@@ -12,6 +12,11 @@ def normalize_database_url(database_url: str) -> str:
     return database_url
 
 
+def resolve_migration_database_url(database_url: str, direct_database_url: str | None = None) -> str:
+    """Prefer a provider's direct connection for schema migrations, when configured."""
+    return normalize_database_url(direct_database_url or database_url)
+
+
 DATABASE_URL = normalize_database_url(settings.database_url)
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)

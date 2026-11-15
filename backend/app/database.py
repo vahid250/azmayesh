@@ -73,7 +73,7 @@ def _worker_session_factory(database_url: URL):
     return sessionmaker(bind=worker_engine, autoflush=False, autocommit=False)
 
 
-def get_db(request: Request):
+async def get_db(request: Request):
     """Yield a database session; Cloudflare requests must use Hyperdrive.
 
     A Worker must never silently fall back to its ephemeral SQLite filesystem.
@@ -91,23 +91,17 @@ def get_db(request: Request):
                 detail="Database is not connected: configure the HYPERDRIVE binding first",
             ) from exc
         factory = _worker_session_factory(_hyperdrive_url(hyperdrive))
-        # The async dependency keeps the lock for the full lifetime of the
-        # synchronous SQLAlchemy session and releases it even on request errors.
-        async def worker_session():
-            await _worker_db_lock.acquire()
-            db = factory()
-            try:
-                yield db
-            finally:
-                db.close()
-                _worker_db_lock.release()
-        return worker_session()
-
-    def local_session():
-        db = SessionLocal()
+        await _worker_db_lock.acquire()
+        db = factory()
         try:
             yield db
         finally:
             db.close()
+            _worker_db_lock.release()
+        return
 
-    return local_session()
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

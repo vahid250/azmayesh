@@ -42,7 +42,9 @@ def verify_telegram_init_data(init_data: str) -> dict:
     if "user" in values:
         try:
             user = json.loads(values["user"])
-        except json.JSONDecodeError as exc:
+            if not isinstance(user, dict):
+                raise ValueError("Telegram user must be a JSON object")
+        except (json.JSONDecodeError, ValueError) as exc:
             raise HTTPException(status_code=401, detail="Telegram user data is invalid") from exc
     return {"auth_date": auth_date, "user": user, "query_id": values.get("query_id")}
 

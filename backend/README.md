@@ -8,7 +8,7 @@
 cd backend
 python -m venv .venv
 # فعال‌سازی محیط مجازی متناسب با سیستم‌عامل
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 cp .env.example .env
 ```
 
@@ -17,6 +17,14 @@ cp .env.example .env
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
+
+برای اجرای محلی با SQLite، جدول‌ها هنگام شروع برنامه به‌صورت خودکار ساخته می‌شوند. برای محیط میزبانی PostgreSQL، ابتدا migrationها با دستور زیر اجرا می‌شوند:
+
+```bash
+alembic upgrade head
+```
+
+در Render این دستور پیش از اجرای API در `render.yaml` قرار گرفته است. فایل‌های migration در `migrations/versions` نگهداری می‌شوند. تغییرات تولیدشده با autogenerate باید قبل از انتشار دستی بازبینی شوند؛ تولید خودکار migration به‌تنهایی تضمین کامل صحت تغییرات نیست.
 
 اجرای محلی:
 

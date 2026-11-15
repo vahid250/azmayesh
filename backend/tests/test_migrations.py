@@ -1,24 +1,50 @@
 from pathlib import Path
 
+from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-
+from sqlalchemy import create_engine, inspect
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
-def test_initial_migration_is_registered_and_has_expected_tables():
+def _config() -> Config:
     config = Config(str(BACKEND_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
-    scripts = ScriptDirectory.from_config(config)
+    return config
 
+
+def test_initial_migration_is_registered_and_has_expected_tables():
+    scripts = ScriptDirectory.from_config(_config())
     revision = scripts.get_revision("head")
+
     assert revision is not None
     assert revision.revision == "0001_initial"
     source = Path(revision.path).read_text(encoding="utf-8")
-    assert 'op.create_table(\n        "wireguard_clients"' in source
-    assert 'op.create_table(\n        "wireguard_client_owners"' in source
-    assert "ondelete=\"CASCADE\"" in source
+    assert 'op.create_table(\\n        "wireguard_clients"' in source
+    assert 'op.create_table(\\n        "wireguard_client_owners"' in source
+    assert "ondelete=\\"CASCADE\\"" in source
+
+
+def test_initial_migration_executes_against_empty_sqlite_database(tmp_path, monkeypatch):
+    from app.config import settings
+
+    database_file = tmp_path / "migration-test.sqlite"
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{database_file}")
+    command.upgrade(_config(), "head")
+
+    engine = create_engine(f"sqlite:///{database_file}")
+    try:
+        inspector = inspect(engine)
+        assert set(inspector.get_table_names()) == {
+            "alembic_version",
+            "wireguard_clients",
+            "wireguard_client_owners",
+        }
+        columns = {column["name"] for column in inspector.get_columns("wireguard_clients")}
+        assert {"private_key_encrypted", "config_encrypted", "created_at"} <= columns
+    finally:
+        engine.dispose()
 
 
 def test_render_start_command_runs_migrations_before_api():

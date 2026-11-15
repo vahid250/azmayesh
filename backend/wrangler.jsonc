@@ -8,5 +8,11 @@
     "APP_ENV": "production",
     "MOCK_MODE": "true",
     "TELEGRAM_INIT_DATA_MAX_AGE_SECONDS": "3600"
-  }
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "22ea3c86d6a842d2a57415dc16dc1b66"
+    }
+  ]
 }

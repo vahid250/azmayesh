@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: rma-api-lab
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: MOCK_MODE
+        value: "true"
+      - key: TELEGRAM_INIT_DATA_MAX_AGE_SECONDS
+        value: "3600"
+      - key: DATABASE_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: MINI_APP_URL
+        sync: false

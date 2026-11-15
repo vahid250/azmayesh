@@ -2,7 +2,7 @@ import os
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -54,6 +54,33 @@ def get_client_or_404(db: Session, client_id: int, owner_id: str) -> WireGuardCl
     if owner is None or owner.telegram_user_id != owner_id:
         raise HTTPException(status_code=404, detail="WireGuard client not found")
     return row
+
+
+@app.get("/api/v1/diagnostics/database")
+def database_diagnostic(
+    auth: dict = Depends(require_authenticated_request),
+    db: Session = Depends(get_db),
+):
+    """Run an authenticated, read-only database connectivity probe."""
+    try:
+        probe_result = db.execute(text("SELECT 1")).scalar_one()
+    except Exception:
+        # Do not expose connection strings, credentials, hostnames, or driver
+        # internals through a public API response.
+        raise HTTPException(
+            status_code=503,
+            detail="Database connectivity check failed",
+        ) from None
+
+    if probe_result != 1:
+        raise HTTPException(status_code=503, detail="Database connectivity check failed")
+
+    return {
+        "status": "ok",
+        "database": "reachable",
+        "probe": "SELECT 1",
+        "read_only": True,
+    }
 
 
 @app.get("/health")

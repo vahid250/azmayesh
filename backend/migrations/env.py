@@ -1,9 +1,10 @@
+import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.database import Base, normalize_database_url
+from app.database import Base, resolve_migration_database_url
 from app.config import settings
 from app import models  # noqa: F401 - register ORM metadata
 
@@ -12,7 +13,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-database_url = normalize_database_url(settings.database_url)
+database_url = resolve_migration_database_url(
+    settings.database_url,
+    os.getenv("DIRECT_DATABASE_URL"),
+)
 
 
 def run_migrations_offline() -> None:

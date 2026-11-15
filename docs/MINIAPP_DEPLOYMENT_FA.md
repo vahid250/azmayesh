@@ -121,3 +121,40 @@ Cloudflare Pages میزبانی رابط کاربری و توابع سبک HTTP 
 
 مرجع رسمی ساختار Blueprint و متغیرهای محرمانه: https://render.com/docs/blueprint-spec
 مرجع رسمی اتصال Neon و انتخاب رشته اتصال pooled: https://neon.com/docs/connect/connect-from-any-app
+
+
+## آماده‌سازی رایگان فرانت‌اند روی Cloudflare Pages
+
+پوشه `frontend` یک سایت استاتیک HTML/JavaScript است و نیاز به مرحله build ندارد. فایل `frontend/wrangler.toml` تنظیمات Pages را مشخص می‌کند:
+
+- نام پیشنهادی پروژه: `rma-miniapp`
+- پوشه خروجی: `.` (همان پوشه frontend)
+- تاریخ سازگاری Functions: `2026-11-15`
+- مسیرهای Function در `frontend/functions/` قرار دارند و باید همراه سایت منتشر شوند.
+
+### تنظیم از طریق Git integration
+
+1. در Cloudflare وارد بخش Workers & Pages شو و Create application / Pages را انتخاب کن.
+2. اگر حساب رایگان بدون درخواست کارت یا پرداخت قابل ساخت بود، GitHub را متصل کن و مخزن `vahid250/azmayesh` را انتخاب کن.
+3. شاخهٔ `work/rma-backend-dashboard` را برای انتشار آزمایشی انتخاب کن؛ شاخه اصلی را تغییر نده.
+4. Root directory را `frontend` قرار بده.
+5. چون سایت استاتیک است، Build command را خالی بگذار و خروجی را `.` قرار بده. فایل `wrangler.toml` هم این مقادیر را در مخزن ثبت کرده است.
+6. اگر صفحه تنظیمات برای Build command مقدار اجباری خواست، متوقف شو و قبل از تغییر آن، تصویر صفحه را بررسی می‌کنیم؛ دستور ساخت ساختگی وارد نکن.
+7. تا زمان آماده‌شدن API، متغیر محیطی `BACKEND_ORIGIN` را تنظیم نکن. Functionهای `/api/*` و `/health` در این حالت پاسخ کنترل‌شده 503 می‌دهند؛ این رفتار عمدی است.
+8. بعد از انتشار موفق، آدرس HTTPS تولیدشده را نگه دار. هنوز آن را به BotFather یا `MINI_APP_URL` وصل نکن؛ ابتدا بک‌اند و پراکسی را با هم آزمایش می‌کنیم.
+
+**قانون توقف هزینه:** اگر Cloudflare هنگام ساخت حساب، اتصال GitHub یا انتشار آزمایشی درخواست کارت بانکی، پرداخت یا ارتقای پولی کرد، هیچ اطلاعات پرداختی وارد نکن و ادامه نده. از صفحه خارج شو و گزینه رایگان جایگزین را بررسی می‌کنیم. هیچ ثبت‌نام یا استقراری از طرف این مخزن به‌صورت خودکار انجام نمی‌شود.
+
+### آزمون محلی بدون حساب Cloudflare
+
+در رایانه‌ای که Node.js نصب است، می‌توان Wrangler را فقط برای توسعه محلی اجرا کرد:
+
+```bash
+cd frontend
+npx wrangler pages dev .
+```
+
+برای آزمون Functionهای پراکسی، متغیر آزمایشی `BACKEND_ORIGIN` باید به یک API HTTPS آزمایشی تحت کنترل خودتان اشاره کند. توکن ربات، کلید رمزنگاری و کلید خصوصی WireGuard را هرگز به محیط فرانت‌اند یا فایل Wrangler اضافه نکنید.
+
+مستندات رسمی: https://developers.cloudflare.com/pages/functions/wrangler-configuration/
+راهنمای رسمی Pages Functions: https://developers.cloudflare.com/pages/functions/get-started/

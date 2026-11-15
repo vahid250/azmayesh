@@ -12,7 +12,10 @@ from app import models  # noqa: F401 - register ORM metadata
 
 app = FastAPI(title="R&MA Backend Lab", version="0.4.0")
 app.include_router(telegram_router)
-Base.metadata.create_all(bind=engine)
+# SQLite is used for local development and lightweight tests. PostgreSQL
+# deployments must be changed only through reviewed Alembic migrations.
+if engine.dialect.name == "sqlite":
+    Base.metadata.create_all(bind=engine)
 
 
 class WireGuardRequest(BaseModel):

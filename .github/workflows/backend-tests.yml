@@ -46,6 +46,8 @@ jobs:
           node --input-type=module --check < ../frontend/functions/health.js
       - name: Test Cloudflare Pages proxy behavior
         run: node ../frontend/check-pages-functions.mjs
+      - name: Test Pages proxy to live FastAPI backend
+        run: node ../frontend/check-pages-integration.mjs
       - name: Check dashboard integration and inline scripts
         run: node ../frontend/check-dashboard.mjs
       - name: Run tests

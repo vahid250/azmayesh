@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_webhook_secret: str = ""
     mini_app_url: str = ""
-    telegram_init_data_max_age_seconds: int = 86400
+    # Telegram initData is static for an opened WebApp session. One hour is a
+    # practical compromise; users can reopen the Mini App to obtain fresh data.
+    telegram_init_data_max_age_seconds: int = 3600
     encryption_key: str = ""
     database_url: str = "sqlite:///./rma_backend.db"
     wg_interface: str = "wg0"

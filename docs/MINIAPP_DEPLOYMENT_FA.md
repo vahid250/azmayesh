@@ -80,7 +80,7 @@ Cloudflare Pages میزبانی رابط کاربری و توابع سبک HTTP 
 
 ### ۲) ساخت سرویس Render از روی Blueprint
 
-1. وارد Render شو و گزینه New ثم Blueprint را انتخاب کن.
+1. وارد Render شو و گزینه New Blueprint را انتخاب کن.
 2. مخزن `vahid250/azmayesh` را متصل کن.
 3. فایل `render.yaml` در ریشه مخزن را انتخاب کن.
 4. پیش از تأیید، بررسی کن که Branch همان `work/rma-backend-dashboard` و پلن سرویس Free باشد.
@@ -89,7 +89,7 @@ Cloudflare Pages میزبانی رابط کاربری و توابع سبک HTTP 
    - `ENCRYPTION_KEY`: کلید Fernet تولیدشده با دستور زیر
    - `TELEGRAM_BOT_TOKEN`: توکن ربات موجود
    - `TELEGRAM_WEBHOOK_SECRET`: یک مقدار تصادفی مستقل برای webhook
-   - `MINI_APP_URL`: فعلاً پس از انتشار HTTPS فرانت‌اند تنظیم شود؛ تا آن زمان خالی بماند، اگر فرم اجازه می‌دهد.
+   - `MINI_APP_URL`: در این مرحله در Blueprint تعریف نشده است؛ پس از انتشار HTTPS فرانت‌اند، آن را دستی در تنظیمات محیطی سرویس اضافه کن.
 6. کلید Fernet را روی دستگاه خودت تولید کن؛ آن را در چت ارسال نکن:
    ```bash
    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

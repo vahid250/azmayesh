@@ -730,7 +730,7 @@ document.addEventListener("DOMContentLoaded", function () {
       } else {
         badge.textContent = "سرور عملیاتی آماده نیست";
         badge.className = "text-[10px] px-2 py-1 rounded-full bg-surface-container-high text-outline";
-        detail.textContent = "API پاسخ می‌دهد، اما تنظیمات لازم برای صدور کانفیگ روی سرور واقعی تکمیل نشده است.";
+        detail.textContent = health.provisioning_reason ? ("API پاسخ می‌دهد، اما آمادگی WireGuard تأیید نشد: " + health.provisioning_reason) : "API پاسخ می‌دهد، اما تنظیمات لازم برای صدور کانفیگ روی سرور واقعی تکمیل نشده است.";
         if (headerLabel) headerLabel.textContent = "API متصل • سرور آماده نیست";
       }
     } catch (error) {

@@ -24,6 +24,16 @@ const required = [
 for (const marker of required) {
   if (!html.includes(marker)) throw new Error("Dashboard integration marker missing: " + marker);
 }
+if (!html.includes('aria-disabled="true" tabindex="-1" id="selectedPlanCta"')) {
+  throw new Error("Demo checkout must remain disabled until billing is implemented.");
+}
+if (!html.includes('aria-disabled="true" tabindex="-1" id="socialMediaPassBtn"')) {
+  throw new Error("Unimplemented social VPN offer must remain disabled.");
+}
+if (html.includes("خرید و فعال‌سازی پلن") || html.includes("امکان پرداخت امن ریالی") || html.includes("۵۰۰MB رایگان")) {
+  throw new Error("Unimplemented purchase or free-data offer is presented as active.");
+}
+
 if (!apiClient.includes("X-Telegram-Init-Data")) {
   throw new Error("Telegram initData header missing from API client.");
 }

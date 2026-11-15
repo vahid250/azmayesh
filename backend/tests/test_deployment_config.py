@@ -15,6 +15,7 @@ def test_render_blueprint_targets_experimental_branch_and_safe_mock_mode():
     assert service["branch"] == "work/rma-backend-dashboard"
     assert service["rootDir"] == "backend"
     assert service["healthCheckPath"] == "/health"
+    assert service["autoDeployTrigger"] == "checksPass"
 
     env = {item["key"]: item for item in service["envVars"]}
     assert env["APP_ENV"]["value"] == "production"

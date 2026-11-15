@@ -34,6 +34,14 @@ if (html.includes("خرید و فعال‌سازی پلن") || html.includes("ا
   throw new Error("Unimplemented purchase or free-data offer is presented as active.");
 }
 
+
+if (/[?&]start=/i.test(html)) throw new Error("Unsupported Telegram start payload remains in dashboard.");
+if (!html.includes("disableUnimplementedTelegramCommands") || !html.includes('url.searchParams.has("start")')) {
+  throw new Error("Runtime guard for unsupported Telegram commands is missing.");
+}
+if (!html.includes('const webFallbackUrl = "https://t.me/RMA_WireGuardBot";')) {
+  throw new Error("Quick launch must use the plain bot URL.");
+}
 if (!apiClient.includes("X-Telegram-Init-Data")) {
   throw new Error("Telegram initData header missing from API client.");
 }

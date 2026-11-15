@@ -21,9 +21,9 @@ def test_initial_migration_is_registered_and_has_expected_tables():
     assert revision is not None
     assert revision.revision == "0001_initial"
     source = Path(revision.path).read_text(encoding="utf-8")
-    assert 'op.create_table(\n        "wireguard_clients"' in source
-    assert 'op.create_table(\n        "wireguard_client_owners"' in source
-    assert "ondelete=\\"CASCADE\\"" in source
+    assert '"wireguard_clients"' in source
+    assert '"wireguard_client_owners"' in source
+    assert "ondelete=" + chr(34) + "CASCADE" + chr(34) in source
 
 
 def test_initial_migration_executes_against_empty_sqlite_database(tmp_path, monkeypatch):

@@ -41,7 +41,7 @@ def test_cloudflare_pages_config_serves_frontend_root_and_functions():
     assert (frontend_dir / "functions" / "health.js").is_file()
 
 
-def test_cloudflare_python_worker_config_keeps_mock_mode_and_no_placeholder_binding():
+def test_cloudflare_python_worker_config_keeps_mock_mode_and_hyperdrive_binding():
     backend_dir = Path(__file__).resolve().parents[1]
     config = json.loads((backend_dir / "wrangler.jsonc").read_text(encoding="utf-8"))
 
@@ -49,7 +49,11 @@ def test_cloudflare_python_worker_config_keeps_mock_mode_and_no_placeholder_bind
     assert config["main"] == "worker.py"
     assert "python_workers" in config["compatibility_flags"]
     assert config["vars"]["MOCK_MODE"] == "true"
-    assert "hyperdrive" not in config
+
+    hyperdrive = config["hyperdrive"]
+    assert len(hyperdrive) == 1
+    assert hyperdrive[0]["binding"] == "HYPERDRIVE"
+    assert hyperdrive[0]["id"] == "22ea3c86d6a842d2a57415dc16dc1b66"
 
     project = tomllib.loads((backend_dir / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["requires-python"] == ">=3.13"

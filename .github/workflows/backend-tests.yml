@@ -62,4 +62,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: backend/pyproject.toml
       - name: Validate Cloudflare Python Worker bundle (dry run)
-        run: uv run pywrangler deploy --dry-run
+        run: |
+          rm -rf .worker-build
+          mkdir -p .worker-build
+          cp worker.py pyproject.toml wrangler.jsonc .worker-build/
+          cp -R app .worker-build/
+          cd .worker-build
+          uv run pywrangler deploy --dry-run

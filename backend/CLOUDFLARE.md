@@ -36,9 +36,15 @@ It does not deploy anything and does not create Cloudflare resources.
 
 ## Local validation
 
-From this directory:
+From this directory, prepare an isolated build folder (this keeps the existing
+hosted-backend `requirements.txt` unchanged):
 
 ```sh
+rm -rf .worker-build
+mkdir -p .worker-build
+cp worker.py pyproject.toml wrangler.jsonc .worker-build/
+cp -R app .worker-build/
+cd .worker-build
 uv run pywrangler deploy --dry-run
 ```
 

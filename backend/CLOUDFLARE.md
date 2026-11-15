@@ -10,6 +10,8 @@ It does not deploy anything and does not create Cloudflare resources.
   live WireGuard interface must run on a separate server.
 - Database-backed API routes fail closed until a Cloudflare Hyperdrive binding
   named `HYPERDRIVE` is configured.
+- Worker secrets and settings are loaded into request-scoped configuration,
+  not copied into process-wide environment variables.
 - The Worker does not run Alembic migrations or create tables at startup.
 - Telegram tokens, webhook secrets, API keys, and the encryption key must be
   entered as Cloudflare secrets, never committed to Git.

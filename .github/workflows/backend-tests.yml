@@ -6,6 +6,8 @@ on:
     paths:
       - "backend/**"
       - "frontend/**"
+      - "render.yaml"
+      - "docs/MINIAPP_DEPLOYMENT_FA.md"
       - ".github/workflows/backend-tests.yml"
   pull_request:
     branches: ["main"]

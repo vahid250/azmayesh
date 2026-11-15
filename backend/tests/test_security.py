@@ -85,3 +85,17 @@ def test_invalid_telegram_init_data_signature_is_rejected(monkeypatch):
         verify_telegram_init_data(encoded)
 
     assert exc.value.status_code == 401
+
+
+def test_non_object_telegram_user_payload_is_rejected(monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", TOKEN)
+    values = {
+        "auth_date": str(int(time.time())),
+        "user": json.dumps(["not", "a", "user", "object"]),
+    }
+
+    with pytest.raises(HTTPException) as exc:
+        verify_telegram_init_data(signed_init_data(values))
+
+    assert exc.value.status_code == 401
+    assert "user data" in exc.value.detail.lower()

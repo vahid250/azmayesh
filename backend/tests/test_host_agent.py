@@ -21,10 +21,13 @@ class FakeWG:
     def __init__(self, rx=0, tx=0):
         self.rx, self.tx = rx, tx
         self.calls = []
+        self.fail_show = False
 
     def __call__(self, args, **kwargs):
         self.calls.append(args)
         if args[1:3] == ["show", "wg0"]:
+            if self.fail_show:
+                raise subprocess.CalledProcessError(1, args, stderr="simulated wg dump failure")
             return subprocess.CompletedProcess(args, 0, dump(self.rx, self.tx), "")
         return subprocess.CompletedProcess(args, 0, "", "")
 
@@ -136,5 +139,24 @@ def test_extended_metering_outage_removes_peer_after_grace_period(tmp_path):
     meter.run_once()
     assert store.disabled(PUB)
     assert store.pending(PUB) is None
+    assert any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
+    store.close()
+
+
+def test_extended_wireguard_sampling_failure_removes_managed_peers(tmp_path):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG(0, 0)
+    wg.fail_show = True
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET,
+        interface="wg0", peers={PUB: Peer(7, PUB)}, store=store,
+        command=wg, post=lambda *_: 200, max_outage_seconds=1,
+    )
+    meter.run_once()
+    assert not store.disabled(PUB)
+    store.db.execute("UPDATE agent_state SET value=0 WHERE key='sample_fail_since'")
+    store.db.commit()
+    meter.run_once()
+    assert store.disabled(PUB)
     assert any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
     store.close()

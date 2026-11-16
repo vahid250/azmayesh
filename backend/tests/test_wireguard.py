@@ -295,4 +295,4 @@ def test_production_config_issuance_is_blocked_until_entitlements_exist(monkeypa
         )
 
     assert exc.value.status_code == 503
-    assert "payment verification" in exc.value.detail.lower()
+    assert "payment adapter" in exc.value.detail.lower()

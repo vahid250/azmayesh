@@ -54,9 +54,10 @@ Expected output is JSON with:
 - wireguard_interface_readable=true
 - authorized_peers_missing_from_interface=0
 - pending_removal_count=0
-- read_only=true
+- no_peer_changes=true
+- no_usage_submission=true
 
-The check command does not add or remove peers and does not submit usage. The transient systemd unit supplies the same limited network capability and protected environment-file loading as the service.
+The check command does not add or remove peers and does not submit usage. It may initialize the local SQLite state file. The transient systemd unit supplies the same limited network capability and protected environment-file loading as the service.
 
 If the API cannot be reached, the signature is rejected, the interface differs, or WireGuard counters cannot be read, stop here and correct the configuration.
 

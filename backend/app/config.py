@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     wg_subnet: str = "10.66.66.0/24"
     wg_dns: str = "1.1.1.1,8.8.8.8"
     wg_mtu: int = 1360
+    # Public trial/referral policy and a safe pause switch for new activations.
+    service_mode: str = "trial"
+    trial_duration_days: int = 30
+    trial_start_at: str = ""
+    referral_reward_bytes: int = 104857600
+    service_pause_message: str = "برای پایش کیفیت و بررسی نتایج، ثبت سفارش و صدور کانفیگ جدید موقتاً متوقف شده است. ربات و اطلاعات حساب شما حفظ می‌شود؛ زمان بازگشت از همین بخش اعلام خواهد شد."
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -60,6 +66,11 @@ _WORKER_ENV_FIELDS = {
     "WG_SUBNET": "wg_subnet",
     "WG_DNS": "wg_dns",
     "WG_MTU": "wg_mtu",
+    "RMA_SERVICE_MODE": "service_mode",
+    "RMA_TRIAL_DURATION_DAYS": "trial_duration_days",
+    "RMA_TRIAL_START_AT": "trial_start_at",
+    "RMA_REFERRAL_REWARD_BYTES": "referral_reward_bytes",
+    "RMA_SERVICE_PAUSE_MESSAGE": "service_pause_message",
 }
 
 

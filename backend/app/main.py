@@ -77,7 +77,7 @@ def public_service_status():
 class OrderRequest(BaseModel):
     plan_code: str = Field(min_length=1, max_length=40)
     payment_method: str = Field(default="crypto", pattern="^(crypto|rial)$")
-    terms_version: str = Field(min_length=1, max_length=32)
+    terms_version: str | None = Field(default=None, min_length=1, max_length=32)
 
 
 class UsageReportRequest(BaseModel):

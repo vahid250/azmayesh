@@ -113,6 +113,16 @@ def create_wireguard_config(
     auth: dict = Depends(require_authenticated_request),
     db: Session = Depends(get_db),
 ):
+    # No verified payment/entitlement/quota ledger exists yet. Fail closed in
+    # production even if a valid Telegram identity is supplied.
+    if get_settings().app_env == "production":
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Configuration issuance is disabled in production until "
+                "payment verification, entitlement, quota, and idempotency controls are implemented."
+            ),
+        )
     return issue_wireguard_config(db, request.client_name, owner_id_from_auth(auth))
 
 

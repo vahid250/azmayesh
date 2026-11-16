@@ -18,6 +18,13 @@
 - Rial payment orders are rejected server-side with the message «درگاه پرداخت ریالی به‌زودی فعال خواهد شد.»; hiding or disabling a button in the Mini App is not the security boundary.
 - Crypto is the only payment method accepted as an order intent in the current API. This does **not** mean a crypto gateway is live: no wallet address, payment processor, confirmation webhook, or settlement adapter is configured. The dashboard must clearly show that crypto checkout is pending integration and must not accept or confirm funds until the real provider has been selected and verified.
 
+## Trial, referral, and temporary pause policy
+
+- The planned public trial duration defaults to 30 days and may be set to 20 days with `RMA_TRIAL_DURATION_DAYS`. The Mini App reads the public `GET /api/v1/public/service-status` endpoint so the notice is visible without Telegram authentication. The official start timestamp remains unset until the real VPN host test and launch are approved.
+- The referral reward is reduced from 1 GiB to 100 MiB (`104857600` bytes) per verified referral. The current dashboard only communicates this policy; referral attribution, anti-abuse checks, and automatic reward crediting are not implemented and must not be represented as active.
+- Set `RMA_SERVICE_MODE=paused` to publish the temporary monitoring notice. In this mode, new orders and new WireGuard configuration issuance return HTTP 503 with the configured pause message. Existing accounts and already-issued configurations remain readable, and existing active connections are not automatically revoked by this switch. This preserves access while new activations are paused.
+- Set `RMA_SERVICE_MODE=trial` to restore new activation requests. The pause notice is public and remains visible in the dashboard while the API is reachable.
+
 ## Payment integration is not enabled
 
 No payment provider, fiat rail, crypto network, custody model, or jurisdictional payment route is selected here. The API must not treat a client screenshot, redirect, transaction hash, or user-submitted status as payment proof.

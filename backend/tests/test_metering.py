@@ -144,7 +144,7 @@ def test_signed_usage_endpoint_applies_quota_once_and_rejects_event_reuse(monkey
         timestamp = str(int(time.time()))
         event_id = "wg-agent-event-004"
         body = json.dumps(
-            {"entitlement_id": entitlement_id, "bytes_used": 350},
+            {"client_id": client_id, "bytes_used": 350},
             separators=(",", ":"),
         ).encode()
         headers = {
@@ -164,7 +164,7 @@ def test_signed_usage_endpoint_applies_quota_once_and_rejects_event_reuse(monkey
         assert repeated.json()["consumed_bytes"] == 350
 
         changed_body = json.dumps(
-            {"entitlement_id": entitlement_id, "bytes_used": 351},
+            {"client_id": client_id, "bytes_used": 351},
             separators=(",", ":"),
         ).encode()
         changed_headers = {

@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.database import Base, engine, get_db
 from app.models import Entitlement, Order, OrderTermsAcceptance, Plan, WireGuardClient, WireGuardClientOwner
 from app.security import decrypt_secret, require_authenticated_request
-from app.billing import active_entitlement_for_user, create_order as create_order_record, record_verified_usage
+from app.billing import active_entitlement_for_user, record_verified_usage
 from app.metering import METERING_PATH, METERING_REGISTRY_PATH, METERING_PEER_ACK_PATH, verify_metering_signature, verify_signed_internal_request
 from app.wireguard import (
     _validate_real_server,
@@ -377,16 +377,14 @@ def public_terms_metadata():
 @app.post("/api/v1/orders")
 def create_user_order(
     request: OrderRequest,
-    idempotency_key: str = Header(..., alias="Idempotency-Key"),
     auth: dict = Depends(require_authenticated_request),
-    db: Session = Depends(get_db),
 ):
     ensure_new_activations_enabled()
     if request.terms_version != CURRENT_TERMS_VERSION:
         raise HTTPException(status_code=409, detail="شرایط استفاده تغییر کرده است؛ نسخه جدید را مطالعه و تأیید کنید.")
     # Fail closed until a real payment provider, settlement verification,
     # refund path, and production readiness checks have been implemented.
-    # A direct API call must not create even a pending order during prelaunch.
+    # No database session is opened and no pending order is created in prelaunch.
     raise HTTPException(
         status_code=503,
         detail="ثبت سفارش و پرداخت هنوز فعال نیست؛ هیچ سفارش یا وجهی دریافت نمی‌شود.",

@@ -26,7 +26,7 @@ def test_initial_migration_is_registered_and_has_expected_tables():
     assert '"orders"' in source
     assert '"entitlements"' in source
     assert '"usage_records"' in source
-    assert "ondelete=" + chr(34) + "CASCADE" + chr(34) in source
+    assert "ondelete=" + chr(34) + "RESTRICT" + chr(34) in source
 
 
 def test_initial_migration_executes_against_empty_sqlite_database(tmp_path, monkeypatch):

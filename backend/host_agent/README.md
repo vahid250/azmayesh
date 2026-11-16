@@ -1,12 +1,12 @@
 # R&MA WireGuard host metering agent
 
-This process runs on the actual VPN host, never in Cloudflare Workers or a browser. It samples server-side counters, sends byte deltas to the HMAC-authenticated backend endpoint, and removes a peer from the live interface when the backend returns a permanent authentication, validation, entitlement, or quota rejection. A pending report is retried with the same event ID; if it remains unacknowledged for the configured outage window (default 120 seconds), the peer is removed to avoid indefinite unmetered traffic.
+This process runs on the actual VPN host, never in Cloudflare Workers or a browser. It samples server-side counters, sends byte deltas to the HMAC-authenticated backend endpoint, and removes a peer from the live interface when the backend returns a permanent authentication or unknown-client rejection; quota/expiry removals are driven by the authoritative registry. A pending report is retried with the same event ID; if it remains unacknowledged for the configured outage window (default 120 seconds), the peer is removed to avoid indefinite unmetered traffic.
 
 ## Security boundary
 - The backend and host must receive the same random shared secret (minimum 32 characters) through an operator-managed secret store. Never commit it or put it in the Mini App, bot, peer registry, or logs.
 - The API URL must use HTTPS. Client-reported counters are never accepted.
 - The agent retrieves peer IDs, public keys, and allowed IPs from the authenticated backend registry over HTTPS. No private keys are returned to the agent.
-- Run under a dedicated OS account with narrowly scoped permission to read counters and remove peers. Protect the registry and SQLite state from untrusted writes.
+- Run under a dedicated OS account with narrowly scoped permission to read counters, add peers, and remove peers. Protect the registry and SQLite state from untrusted writes.
 - SQLite keeps a durable outbox. Retries reuse the exact body and event ID; a baseline is not advanced while a report is pending.
 - Permanent HTTP errors cause peer removal. Transient HTTP errors and network errors retain the pending report for bounded retry; the peer is removed if no report is accepted, or the WireGuard counters cannot be sampled, before the outage window expires.
 
@@ -22,7 +22,7 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 ## Automatic peer registry
 The agent requests `POST /api/v1/internal/metering/peers` every polling cycle. The backend returns peers awaiting registration or already registered, plus explicit removal instructions for revoked, expired, exhausted, or suspended peers. The agent registers pending peers, acknowledges successful registration, removes unauthorized peers, and acknowledges revocation/suspension through the signed `POST /api/v1/internal/metering/peer-status` endpoint. No manually edited peer registry file is required.
 
-The backend's current provisioning path runs `wg` locally. For the first real test, the backend process and this agent must therefore run on the same VPN host and use the same WireGuard interface. Cloudflare Workers must not run this agent or execute `wg` commands.
+The API may run on Cloudflare or another backend host; it does not execute local `wg` commands. The host agent on the VPN server receives pending peer instructions from the authenticated registry, applies them to its local interface, and acknowledges the result. Cloudflare Workers must never run this agent or execute `wg` commands.
 
 ## Environment
 - RMA_API_BASE_URL: HTTPS backend origin

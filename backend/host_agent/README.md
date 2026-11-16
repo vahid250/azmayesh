@@ -23,6 +23,7 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 The agent requests `POST /api/v1/internal/metering/peers` every polling cycle. The backend returns only registered WireGuard peers whose entitlements are active, unexpired, and have remaining quota. The agent reconciles the live interface against this signed registry and removes previously managed peers that disappear from it. No manually edited peer registry file is required.
 
 The backend's current provisioning path runs `wg` locally. For the first real test, the backend process and this agent must therefore run on the same VPN host and use the same WireGuard interface. Cloudflare Workers must not run this agent or execute `wg` commands.
+
 ## Environment
 - RMA_API_BASE_URL: HTTPS backend origin
 - RMA_METERING_SHARED_SECRET: out-of-band secret, never committed
@@ -34,7 +35,7 @@ The backend's current provisioning path runs `wg` locally. For the first real te
 
 ## Operator-run installation outline
 1. Install Python 3.12+ and wireguard-tools on the VPN host.
-2. Copy this directory to /opt/rma/host_agent; create a dedicated service account and protected registry/state directories.
+2. Copy this directory to /opt/rma/host_agent; create a dedicated service account and protected state directory.
 3. Configure /etc/rma/metering.env with mode 0600.
 4. Install the supplied systemd unit only after reviewing the host-specific wg/netlink permission model.
 5. Start and verify the agent before enabling customer peers.

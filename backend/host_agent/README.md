@@ -20,7 +20,7 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 7. If wg peer removal fails, a critical error is logged and operator intervention is required. No successful suspension is claimed.
 
 ## Automatic peer registry
-The agent requests `POST /api/v1/internal/metering/peers` every polling cycle. The backend returns only registered WireGuard peers whose entitlements are active, unexpired, and have remaining quota. The agent reconciles the live interface against this signed registry and removes previously managed peers that disappear from it. No manually edited peer registry file is required.
+The agent requests `POST /api/v1/internal/metering/peers` every polling cycle. The backend returns peers awaiting registration or already registered, plus explicit removal instructions for revoked, expired, exhausted, or suspended peers. The agent registers pending peers, acknowledges successful registration, removes unauthorized peers, and acknowledges revocation/suspension through the signed `POST /api/v1/internal/metering/peer-status` endpoint. No manually edited peer registry file is required.
 
 The backend's current provisioning path runs `wg` locally. For the first real test, the backend process and this agent must therefore run on the same VPN host and use the same WireGuard interface. Cloudflare Workers must not run this agent or execute `wg` commands.
 

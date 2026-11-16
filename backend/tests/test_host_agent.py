@@ -209,3 +209,40 @@ def test_signed_registry_adds_authorized_peer_and_removes_stale_peer(tmp_path):
     assert store.disabled(PUB)
     assert any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
     store.close()
+
+
+def test_pending_peer_is_acknowledged_only_after_host_observes_or_registers_it(tmp_path):
+    from host_agent.rma_wg_meter import PEER_ACK_PATH
+
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG(0, 0)
+    registry = {
+        "interface": "wg0",
+        "peers": [{
+            "client_id": 7,
+            "public_key": PUB,
+            "allowed_ips": "10.0.0.2/32",
+            "state": "pending_peer_registration",
+        }],
+        "remove_peers": [],
+    }
+    calls = []
+
+    def registry_fetcher(url, headers, body):
+        return registry
+
+    def post(url, headers, body):
+        calls.append((url, headers, body))
+        return 200
+
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET,
+        interface="wg0", peers={}, store=store, command=wg,
+        post=post, registry_fetcher=registry_fetcher,
+    )
+    meter.run_once()
+    acknowledgements = [call for call in calls if call[0].endswith(PEER_ACK_PATH)]
+    assert len(acknowledgements) == 1
+    assert b'"state":"peer_registered"' in acknowledgements[0][2]
+    assert any(call[1:] == ["set", "wg0", "peer", PUB, "allowed-ips", "10.0.0.2/32"] for call in wg.calls)
+    store.close()

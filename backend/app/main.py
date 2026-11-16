@@ -197,8 +197,10 @@ async def get_trusted_wireguard_registry(
             Entitlement.consumed_bytes < Entitlement.quota_bytes,
         )
         .order_by(WireGuardClient.id.asc())
-        .limit(2000)
+        .limit(2001)
     ).all()
+    if len(rows) > 2000:
+        raise HTTPException(status_code=503, detail="WireGuard registry exceeds the supported safe batch size")
     return {
         "interface": payload.interface,
         "generated_at": now,

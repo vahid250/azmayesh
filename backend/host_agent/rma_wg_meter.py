@@ -564,7 +564,8 @@ def build_from_env():
 
 def main():
     parser = argparse.ArgumentParser(description="R&MA trusted WireGuard metering agent")
-    parser.add_argument("--once", action="store_true")
+    parser.add_argument("--once", action="store_true", help="run one live reconciliation/metering cycle")
+    parser.add_argument("--check", action="store_true", help="read-only API and WireGuard preflight; makes no changes")
     args = parser.parse_args()
     logging.basicConfig(
         level=os.environ.get("RMA_LOG_LEVEL", "INFO"),
@@ -572,6 +573,22 @@ def main():
     )
     meter, store, interval = build_from_env()
     try:
+        if args.check:
+            peers, removals = meter._fetch_registry()
+            observed = meter.sample()
+            missing = sum(1 for key in peers if key not in observed)
+            result = {
+                "api_registry_authenticated": True,
+                "wireguard_interface_readable": True,
+                "interface": meter.interface,
+                "authorized_peer_count": len(peers),
+                "authorized_peers_missing_from_interface": missing,
+                "pending_removal_count": len(removals),
+                "observed_interface_peer_count": len(observed),
+                "read_only": True,
+            }
+            print(json.dumps(result, sort_keys=True))
+            return 0 if missing == 0 and not removals else 2
         while True:
             try:
                 meter.run_once()

@@ -171,6 +171,7 @@ def record_verified_usage(
             Entitlement.consumed_bytes + bytes_used <= Entitlement.quota_bytes,
         )
         .values(consumed_bytes=Entitlement.consumed_bytes + bytes_used)
+        .execution_options(synchronize_session=False)
     )
     if result.rowcount != 1:
         db.rollback()

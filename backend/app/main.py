@@ -44,7 +44,7 @@ class OrderRequest(BaseModel):
 
 
 class UsageReportRequest(BaseModel):
-    entitlement_id: int = Field(gt=0)
+    client_id: int = Field(gt=0)
     bytes_used: int = Field(gt=0, le=10**12)
 
 
@@ -135,15 +135,19 @@ async def ingest_trusted_usage(
     except Exception:
         raise HTTPException(status_code=422, detail="Invalid metering report payload") from None
 
+    owner = db.get(WireGuardClientOwner, report.client_id)
+    if owner is None or owner.entitlement_id is None:
+        raise HTTPException(status_code=404, detail="Metered WireGuard client not found")
     entitlement = record_verified_usage(
         db,
-        entitlement_id=report.entitlement_id,
+        entitlement_id=owner.entitlement_id,
         source="wireguard-meter",
         source_event_id=x_rma_event_id,
         bytes_used=report.bytes_used,
     )
     return {
         "accepted": True,
+        "client_id": report.client_id,
         "entitlement_id": entitlement.id,
         "consumed_bytes": entitlement.consumed_bytes,
         "remaining_bytes": max(0, entitlement.quota_bytes - entitlement.consumed_bytes),

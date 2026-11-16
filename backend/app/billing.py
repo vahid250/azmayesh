@@ -5,12 +5,13 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Entitlement, Order, PaymentEvent, Plan, UsageRecord
+from app.models import Entitlement, Order, OrderTermsAcceptance, PaymentEvent, Plan, UsageRecord
 
 
 def create_order(
     db: Session, telegram_user_id: str, plan_code: str, idempotency_key: str,
     payment_method: str = "crypto",
+    terms_version: str | None = None,
 ) -> Order:
     payment_method = (payment_method or "").strip().lower()
     if payment_method == "rial":
@@ -30,6 +31,12 @@ def create_order(
     if existing:
         if existing.plan_code != plan_code or existing.payment_method != payment_method:
             raise HTTPException(status_code=409, detail="Idempotency-Key was already used for another order")
+        if terms_version is not None:
+            accepted = db.execute(
+                select(OrderTermsAcceptance).where(OrderTermsAcceptance.order_id == existing.id)
+            ).scalar_one_or_none()
+            if accepted is None or accepted.telegram_user_id != telegram_user_id or accepted.terms_version != terms_version:
+                raise HTTPException(status_code=409, detail="Terms acceptance is missing or does not match this order")
         return existing
 
     plan = db.execute(select(Plan).where(Plan.code == plan_code, Plan.is_active.is_(True))).scalar_one_or_none()
@@ -50,6 +57,15 @@ def create_order(
     )
     db.add(order)
     try:
+        db.flush()
+        if terms_version is not None:
+            if not terms_version.strip() or len(terms_version) > 32:
+                raise HTTPException(status_code=422, detail="Terms version is invalid")
+            db.add(OrderTermsAcceptance(
+                order_id=order.id,
+                telegram_user_id=telegram_user_id,
+                terms_version=terms_version,
+            ))
         db.commit()
     except IntegrityError:
         db.rollback()

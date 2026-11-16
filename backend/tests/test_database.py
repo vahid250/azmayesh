@@ -1,3 +1,10 @@
+import asyncio
+from types import SimpleNamespace
+
+import pytest
+from starlette.requests import Request
+
+import app.database as database
 from app.database import normalize_database_url, resolve_migration_database_url
 
 
@@ -28,3 +35,29 @@ def test_migrations_fall_back_to_runtime_url_when_direct_url_is_missing():
     assert resolve_migration_database_url(
         "postgresql://pooled-user:pass@pooler/db",
     ) == "postgresql+psycopg://pooled-user:pass@pooler/db"
+
+
+
+def test_worker_database_lock_is_released_when_session_factory_raises(monkeypatch):
+    monkeypatch.setenv("RMA_CLOUDFLARE_WORKER", "1")
+    binding = SimpleNamespace(
+        host="db.example.test",
+        port=5432,
+        user="worker",
+        password="test-password",
+        database="rma",
+    )
+    request = Request({"type": "http", "method": "GET", "path": "/", "headers": [], "env": SimpleNamespace(HYPERDRIVE=binding)})
+
+    def failing_factory(_url):
+        raise RuntimeError("session construction failed")
+
+    monkeypatch.setattr(database, "_worker_session_factory", lambda _url: failing_factory)
+
+    async def exercise():
+        generator = database.get_db(request)
+        with pytest.raises(RuntimeError, match="session construction failed"):
+            await anext(generator)
+        assert not database._worker_db_lock.locked()
+
+    asyncio.run(exercise())

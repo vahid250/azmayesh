@@ -51,6 +51,15 @@
   }
 
   window.RMAApi = Object.freeze({
+    serviceStatus: function () {
+      return fetch(apiBase() + "/v1/public/service-status", {
+        headers: { "Accept": "application/json" },
+        cache: "no-store"
+      }).then(function (r) {
+        if (!r.ok) throw new Error("Service status unavailable: " + r.status);
+        return r.json();
+      });
+    },
     health: function () {
       return fetch(apiBase().replace(/\/api$/, "") + "/health", {
         headers: { "Accept": "application/json" },

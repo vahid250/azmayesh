@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.metering import METERING_PATH, verify_metering_signature
-from app.models import Entitlement, Order
+from app.models import Entitlement, Order, WireGuardClient, WireGuardClientOwner
 
 
 SECRET = "unit-test-metering-secret-with-more-than-32-bytes"
@@ -109,7 +109,24 @@ def test_signed_usage_endpoint_applies_quota_once_and_rejects_event_reuse(monkey
             status="active",
         )
         db.add(entitlement)
+        db.flush()
+        client = WireGuardClient(
+            client_name="metering-test-device",
+            client_ip="10.99.0.2/32",
+            public_key="metering-test-public-key",
+            private_key_encrypted="encrypted-private-key",
+            config_encrypted="encrypted-config",
+            state="peer_registered",
+        )
+        db.add(client)
+        db.flush()
+        db.add(WireGuardClientOwner(
+            client_id=client.id,
+            telegram_user_id="metering-user",
+            entitlement_id=entitlement.id,
+        ))
         db.commit()
+        client_id = client.id
         entitlement_id = entitlement.id
 
     def override_get_db():

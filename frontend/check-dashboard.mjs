@@ -48,6 +48,12 @@ if (html.includes("کارت‌به‌کارت شتابی هوشمند") || html.
 }
 
 
+if (!html.includes('id="rmaOfficialContact"') || !html.includes("تنها مسیر ارتباطی تأییدشده")) {
+  throw new Error("The dashboard must identify only the verified R&MA contact path.");
+}
+if (html.includes("@RMA_WireGuard") || html.includes("youtube.com/@RMA_WireGuard") || html.includes("instagram.com/rma_wireguard")) {
+  throw new Error("Unverified social accounts must not be presented as official project channels.");
+}
 if (/[?&]start=/i.test(html)) throw new Error("Unsupported Telegram start payload remains in dashboard.");
 if (!html.includes("disableUnimplementedTelegramCommands") || !html.includes('url.searchParams.has("start")')) {
   throw new Error("Runtime guard for unsupported Telegram commands is missing.");
@@ -89,7 +95,14 @@ const forbiddenDemoClaims = [
   "3 Online",
   "هر ۲۴ ساعت یک شانس چرخش ۱۰۰٪ رایگان دارید",
   "کانفیگ نو صادر می‌شود و قبلی باطل می‌گردد",
-  "پیام و دیدگاه شما با موفقیت به سیستم پشتیبانی تلگرام ارسال شد"
+  "پیام و دیدگاه شما با موفقیت به سیستم پشتیبانی تلگرام ارسال شد",
+  "ALL SCHEMES ACTIVE",
+  "ACTIVE SYSTEM-WIDE",
+  "TESTING COMPLETE",
+  "پاداش نامحدود",
+  "صدور آنی",
+  "4K Demo",
+  "ذخیره کلی و همگام‌سازی در سیستم"
 ];
 for (const claim of forbiddenDemoClaims) {
   if (html.includes(claim)) throw new Error("Unverified dashboard claim remains: " + claim);

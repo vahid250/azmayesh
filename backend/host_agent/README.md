@@ -1,6 +1,6 @@
 # R&MA WireGuard host metering agent
 
-This process runs on the actual VPN host, never in Cloudflare Workers or a browser. It samples server-side counters, sends byte deltas to the HMAC-authenticated backend endpoint, and removes a peer from the live interface when the backend returns HTTP 404 or 409.
+This process runs on the actual VPN host, never in Cloudflare Workers or a browser. It samples server-side counters, sends byte deltas to the HMAC-authenticated backend endpoint, and removes a peer from the live interface when the backend returns a permanent authentication, validation, entitlement, or quota rejection. A pending report is retried with the same event ID; if it remains unacknowledged for the configured outage window (default 120 seconds), the peer is removed to avoid indefinite unmetered traffic.
 
 ## Security boundary
 - The backend and host must receive the same random shared secret (minimum 32 characters) through an operator-managed secret store. Never commit it or put it in the Mini App, bot, peer registry, or logs.
@@ -8,7 +8,7 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 - The peer registry maps WireGuard public keys to backend client IDs. It contains no private keys and must be maintained by the trusted provisioning workflow.
 - Run under a dedicated OS account with narrowly scoped permission to read counters and remove peers. Protect the registry and SQLite state from untrusted writes.
 - SQLite keeps a durable outbox. Retries reuse the exact body and event ID; a baseline is not advanced while a report is pending.
-- HTTP 404/409 causes peer removal. Other HTTP statuses and network errors retain the pending report for retry.
+- Permanent HTTP errors cause peer removal. Transient HTTP errors and network errors retain the pending report for bounded retry; the peer is removed if no report is accepted before the outage window expires.
 
 ## Operating assumptions and limitations
 1. Start the agent before enabling customer peers. The first sample is charged from zero.

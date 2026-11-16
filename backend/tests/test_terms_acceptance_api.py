@@ -92,3 +92,18 @@ def test_order_api_idempotent_retry_keeps_single_acceptance(client_and_db):
     assert len(acceptances) == 1
     assert acceptances[0].telegram_user_id == "24680"
     assert acceptances[0].terms_version == main.CURRENT_TERMS_VERSION
+
+def test_order_api_idempotent_retry_rejects_missing_acceptance(client_and_db):
+    client, db = client_and_db
+    first = _post_order(client, terms_version=main.CURRENT_TERMS_VERSION)
+    assert first.status_code == 200
+
+    acceptance = db.execute(
+        select(OrderTermsAcceptance).where(OrderTermsAcceptance.order_id == first.json()["id"])
+    ).scalar_one()
+    db.delete(acceptance)
+    db.commit()
+
+    retry = _post_order(client, terms_version=main.CURRENT_TERMS_VERSION)
+    assert retry.status_code == 409
+    assert retry.json()["detail"] == "Terms acceptance is missing or does not match this order"

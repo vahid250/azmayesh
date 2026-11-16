@@ -19,10 +19,13 @@ def test_initial_migration_is_registered_and_has_expected_tables():
     revision = scripts.get_revision("head")
 
     assert revision is not None
-    assert revision.revision == "0001_initial"
+    assert revision.revision == "0002_billing_ledger"
     source = Path(revision.path).read_text(encoding="utf-8")
     assert '"wireguard_clients"' in source
     assert '"wireguard_client_owners"' in source
+    assert '"orders"' in source
+    assert '"entitlements"' in source
+    assert '"usage_records"' in source
     assert "ondelete=" + chr(34) + "CASCADE" + chr(34) in source
 
 
@@ -40,6 +43,11 @@ def test_initial_migration_executes_against_empty_sqlite_database(tmp_path, monk
             "alembic_version",
             "wireguard_clients",
             "wireguard_client_owners",
+            "plans",
+            "orders",
+            "payment_events",
+            "entitlements",
+            "usage_records",
         }
         columns = {column["name"] for column in inspector.get_columns("wireguard_clients")}
         assert {"private_key_encrypted", "config_encrypted", "created_at"} <= columns

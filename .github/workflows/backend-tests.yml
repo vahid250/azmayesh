@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Compile source
-        run: python -m compileall -q app tests host_agent
+        run: python -m compileall -q app tests host_agent scripts
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

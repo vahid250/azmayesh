@@ -166,18 +166,21 @@ def list_user_entitlements(
         .limit(100)
     ).scalars().all()
     now = datetime.now(timezone.utc)
-    return [
-        {
+    payload = []
+    for item in rows:
+        expires_at = item.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        payload.append({
             "id": item.id,
             "quota_bytes": item.quota_bytes,
             "consumed_bytes": item.consumed_bytes,
             "remaining_bytes": max(0, item.quota_bytes - item.consumed_bytes),
             "max_devices": item.max_devices,
-            "expires_at": item.expires_at,
-            "status": "expired" if item.expires_at <= now and item.status == "active" else item.status,
-        }
-        for item in rows
-    ]
+            "expires_at": expires_at,
+            "status": "expired" if expires_at <= now and item.status == "active" else item.status,
+        })
+    return payload
 
 
 @app.get("/health")

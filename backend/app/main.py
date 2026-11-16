@@ -39,6 +39,39 @@ class WireGuardRequest(BaseModel):
     client_name: str = Field(default="R&MA Client", min_length=1, max_length=64)
 
 
+def service_is_paused() -> bool:
+    return get_settings().service_mode.strip().lower() == "paused"
+
+
+def ensure_new_activations_enabled() -> None:
+    if service_is_paused():
+        raise HTTPException(
+            status_code=503,
+            detail=get_settings().service_pause_message,
+        )
+
+
+@app.get("/api/v1/public/service-status")
+def public_service_status():
+    """Public, non-sensitive notice used by the Mini App before authentication."""
+    config = get_settings()
+    paused = service_is_paused()
+    days = config.trial_duration_days if config.trial_duration_days in (20, 30) else 30
+    return {
+        "mode": "paused" if paused else "trial",
+        "headline": "توقف موقت برای پایش کیفیت" if paused else f"برنامه دوره آزمایشی {days} روزه R&MA",
+        "message": config.service_pause_message if paused else (
+            f"دوره آزمایشی {days} روزه برای ارزیابی کیفیت در نظر گرفته شده است. "
+            "تاریخ شروع رسمی پس از تکمیل آزمایش سرور واقعی اعلام می‌شود."
+        ),
+        "trial_duration_days": days,
+        "trial_start_at": config.trial_start_at or None,
+        "referral_reward_bytes": max(0, config.referral_reward_bytes),
+        "accepting_new_activations": not paused,
+        "existing_connections_policy": "preserved",
+    }
+
+
 class OrderRequest(BaseModel):
     plan_code: str = Field(min_length=1, max_length=40)
     payment_method: str = Field(default="crypto", pattern="^(crypto|rial)$")
@@ -331,6 +364,7 @@ def create_user_order(
     auth: dict = Depends(require_authenticated_request),
     db: Session = Depends(get_db),
 ):
+    ensure_new_activations_enabled()
     order = create_order_record(
         db,
         owner_id_from_auth(auth),
@@ -415,6 +449,7 @@ def create_wireguard_config(
     auth: dict = Depends(require_authenticated_request),
     db: Session = Depends(get_db),
 ):
+    ensure_new_activations_enabled()
     # Billing and entitlement ledgers now exist, but production issuance remains
     # fail-closed until a real payment adapter, traffic meter, and server rollout
     # have been independently verified.

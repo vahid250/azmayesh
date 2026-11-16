@@ -7,7 +7,7 @@ This runbook is for an isolated staging test only. It does not authorize a produ
 - R&MA API and database may run on Cloudflare/another backend host.
 - The actual WireGuard interface runs on a separate Linux VPN server.
 - The trusted host agent runs only on that VPN server and is the only R&MA component that needs WireGuard network-administration capability.
-- The API and VPN host share one operator-managed HMAC secret, delivered through their secret stores. Never send it in chat, commit it, or put it in a client configuration.
+- The API and VPN host share one operator-managed HMAC secret, delivered through their secret stores. Never send it in chat, commit it, or put it in a client configuration. Keep the VPN host clock synchronized with NTP/chrony; signatures older than five minutes are rejected.
 - The API setting WG_INTERFACE and agent setting RMA_WG_INTERFACE must match exactly. The backend does not need CAP_NET_ADMIN; only the isolated host agent receives it.
 
 ## 2. Staging API configuration
@@ -28,7 +28,7 @@ Apply database migrations before issuing any test config. Do not reuse productio
 
 ## 3. VPN host preflight
 
-On the VPN host, verify the interface is already configured and running:
+On the VPN host, verify the interface is already configured and running, and confirm the firewall allows the WireGuard UDP port and the host has the required IP forwarding/NAT rules for the intended exit traffic:
 
     sudo wg show wg0
     sudo wg show wg0 dump
@@ -41,7 +41,7 @@ Install Python 3 and wireguard-tools. Copy the host_agent directory to /opt/rma/
 
 Create /etc/rma/metering.env with mode 0600. Populate it from metering.env.example using the same secret as the API. Do not put the secret in shell history or source control.
 
-Install both systemd units at /etc/systemd/system/rma-wg-meter.service and /etc/systemd/system/rma-wg-meter-check.service. Review the interface dependency in both units if the interface is not wg0. Both units grant CAP_NET_ADMIN to the dedicated account only; do not run the agent as root.
+Install both systemd units at /etc/systemd/system/rma-wg-meter.service and /etc/systemd/system/rma-wg-meter-check.service. Review the interface dependency in both units if the interface is not wg0. Both units grant CAP_NET_ADMIN to the dedicated account only; do not run the agent as root. CAP_NET_ADMIN is scoped to the process's network namespace, not one interface. For production, isolate the VPN interface and agent in a dedicated network namespace/container.
 
 ## 4. Read-only preflight
 

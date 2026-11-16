@@ -54,9 +54,17 @@ The signature is:
 
 Requests outside a five-minute clock window are rejected. The request body is limited to 4 KiB. The event ID is unique in the usage ledger. `bytes_used` must be the positive byte delta for that interval, not a cumulative counter. Retries must reuse the same event ID and exact body.
 
+## Host-side WireGuard agent (experimental)
+
+A host-side agent now exists under `backend/host_agent/`. It samples `wg show <interface> dump`, computes RX+TX byte deltas, stores counters and pending reports in a durable SQLite outbox, signs requests using the backend's HMAC format, retries with the same event ID/body, and removes a peer using `wg set <interface> peer <public-key> remove` when the backend returns HTTP 404 or 409.
+
+The agent requires a trusted registry mapping each backend `client_id` to the peer public key. This registry must be kept in sync by the trusted provisioning workflow; it is not populated automatically yet. The systemd unit and environment example are templates only. The service has not been installed on a VPN host, and no shared secret has been generated or configured.
+
+The agent is interval-based, not kernel-level byte-perfect shaping. A peer can transfer additional bytes between a sample and removal. The backend rejects an interval that exceeds remaining quota rather than accepting a partial interval, so the final interval may be under-recorded. If peer removal fails, the agent logs a critical error; monitoring and operator response are required.
+
 ## Important operational limit
 
-This endpoint records usage and enforces the entitlement quota in the ledger. It does not yet remove a WireGuard peer, throttle a tunnel, or stop packets on the VPN server when quota is exhausted. A future trusted server agent must treat a quota-exceeded response as a signal to enforce the limit on the actual VPN interface and report the enforcement result.
+The host agent is implemented and locally testable, but live quota enforcement remains unverified until the trusted peer registry is automatically synchronized, the agent is installed on the actual VPN host, permissions are reviewed, and exhaustion is tested against a dedicated test peer. It must not be treated as production-ready yet.
 
 ## Not production-ready
 

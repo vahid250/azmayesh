@@ -16,7 +16,7 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 3. Polling is interval-based, not kernel-level byte-perfect shaping. Traffic can continue between a sample and peer removal.
 4. If counters decrease after an interface/host restart, the new counter value is counted as a fresh delta.
 5. Only peers in the signed backend registry are managed and metered.
-6. The backend currently rejects a report that exceeds remaining quota and marks the entitlement exhausted; the final interval can be under-recorded. The last interval can therefore be under-recorded; the peer is still removed.
+6. The backend records the measured final interval for audit, caps entitlement consumption at the purchased quota, and marks the entitlement exhausted. Traffic transferred between the last sample and peer removal can exceed the purchased allowance; this is interval-metering overshoot, not additional billed quota. The last interval can therefore be under-recorded; the peer is still removed.
 7. If wg peer removal fails, a critical error is logged and operator intervention is required. No successful suspension is claimed.
 
 ## Automatic peer registry

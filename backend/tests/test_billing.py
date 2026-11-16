@@ -159,7 +159,7 @@ def test_usage_event_is_idempotent_and_does_not_double_debit(db):
     assert len(db.execute(select(UsageRecord)).scalars().all()) == 1
 
 
-def test_usage_cannot_exceed_quota_and_failed_charge_is_rolled_back(db):
+def test_overquota_interval_is_recorded_but_consumption_is_capped(db):
     order = create_order(db, "telegram-7", "sample-30d", "order-key-00000009")
     entitlement = confirm_verified_payment(
         db,
@@ -176,20 +176,45 @@ def test_usage_cannot_exceed_quota_and_failed_charge_is_rolled_back(db):
         source_event_id="wg-event-002",
         bytes_used=700,
     )
-    with pytest.raises(HTTPException) as exc:
-        record_verified_usage(
-            db,
-            entitlement_id=entitlement.id,
-            source="wireguard-meter",
-            source_event_id="wg-event-003",
-            bytes_used=301,
-        )
-    assert exc.value.status_code == 409
-    db.refresh(entitlement)
-    assert entitlement.consumed_bytes == 700
-    assert entitlement.status == "exhausted"
-    assert len(db.execute(select(UsageRecord)).scalars().all()) == 1
+    exhausted = record_verified_usage(
+        db,
+        entitlement_id=entitlement.id,
+        source="wireguard-meter",
+        source_event_id="wg-event-003",
+        bytes_used=301,
+    )
+    replay = record_verified_usage(
+        db,
+        entitlement_id=entitlement.id,
+        source="wireguard-meter",
+        source_event_id="wg-event-003",
+        bytes_used=301,
+    )
+    assert exhausted.consumed_bytes == replay.consumed_bytes == 1000
+    assert exhausted.status == replay.status == "exhausted"
+    records = db.execute(select(UsageRecord).order_by(UsageRecord.id)).scalars().all()
+    assert [record.bytes_used for record in records] == [700, 301]
 
+
+def test_exact_quota_usage_marks_entitlement_exhausted(db):
+    order = create_order(db, "telegram-7b", "sample-30d", "order-key-00000009b")
+    entitlement = confirm_verified_payment(
+        db,
+        order_id=order.id,
+        provider="test-provider",
+        provider_event_id="evt-payment-3b",
+        amount_minor=12500,
+        currency="TEST",
+    )
+    result = record_verified_usage(
+        db,
+        entitlement_id=entitlement.id,
+        source="wireguard-meter",
+        source_event_id="wg-event-exact",
+        bytes_used=1000,
+    )
+    assert result.consumed_bytes == 1000
+    assert result.status == "exhausted"
 
 def test_expired_entitlement_rejects_usage(db):
     order = create_order(db, "telegram-8", "sample-30d", "order-key-00000010")

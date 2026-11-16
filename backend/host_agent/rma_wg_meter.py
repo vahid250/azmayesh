@@ -192,6 +192,9 @@ class MeteringStore:
                    ON CONFLICT(public_key) DO UPDATE SET disabled=1""",
                 (key,),
             )
+    
+    def discard_pending(self, key):
+        with self.db:
             self.db.execute("DELETE FROM pending_events WHERE public_key=?", (key,))
 
     def enable(self, key):
@@ -373,6 +376,20 @@ class WireGuardMeter:
             return False
         return True
 
+    def _flush_pending(self, peer):
+        pending = self.store.pending(peer.public_key)
+        if pending is None:
+            return
+        try:
+            status = self._send(pending)
+        except Exception as exc:
+            LOG.warning("pending usage remains queued during peer removal for client %s (%s)", peer.client_id, type(exc).__name__)
+            return
+        if 200 <= status < 300:
+            self.store.acknowledge(peer.public_key, pending.event_id)
+        elif status in (404, 409):
+            self.store.discard_pending(peer.public_key)
+
     def sync_registry(self):
         if self.registry_fetcher is None:
             return self.peers
@@ -387,6 +404,7 @@ class WireGuardMeter:
                     removal_map[key] = Peer(old_peer.client_id, key, "", "suspended")
         for key, peer in removal_map.items():
             try:
+                self._flush_pending(peer)
                 if not self.store.disabled(key):
                     self._remove_peer(key)
                 else:
@@ -478,11 +496,14 @@ class WireGuardMeter:
             if 200 <= status < 300:
                 self.store.acknowledge(key, pending.event_id)
             elif status in (401, 403, 404, 410):
+                if status in (404, 410):
+                    self.store.discard_pending(key)
                 try:
                     self._remove_peer(key)
                 except Exception as exc:
                     LOG.critical("peer enforcement failed for %s (%s); operator action required", key[:10], type(exc).__name__)
             elif status == 409:
+                self.store.discard_pending(key)
                 LOG.warning("backend rejected usage for client %s; awaiting authoritative registry removal", peer.client_id)
             elif time.time() - pending.created_at >= self.max_outage_seconds:
                 try:

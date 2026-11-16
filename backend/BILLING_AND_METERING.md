@@ -52,6 +52,8 @@ The signature is:
 
 `hex(HMAC-SHA256(shared_secret, canonical_message))`
 
+The host registry endpoint uses the same headers and canonical format with method `POST`, path `/api/v1/internal/metering/peers`, a fresh `registry-...` event ID, and request body `{"interface":"wg0"}` (with the actual configured interface name). Its response is delivered over HTTPS and contains only currently authorized public peer metadata; no private keys are returned.
+
 Requests outside a five-minute clock window are rejected. The request body is limited to 4 KiB. The event ID is unique in the usage ledger. `bytes_used` must be the positive byte delta for that interval, not a cumulative counter. Retries must reuse the same event ID and exact body.
 
 ## Host-side WireGuard agent (experimental)

@@ -88,8 +88,12 @@ class MeteringStore:
             disabled INTEGER NOT NULL DEFAULT 0);
           CREATE TABLE IF NOT EXISTS pending_events(
             public_key TEXT PRIMARY KEY, event_id TEXT NOT NULL UNIQUE, client_id INTEGER NOT NULL,
-            bytes_used INTEGER NOT NULL CHECK(bytes_used>0), body BLOB NOT NULL);
+            bytes_used INTEGER NOT NULL CHECK(bytes_used>0), body BLOB NOT NULL,
+            created_at REAL NOT NULL DEFAULT 0);
         """)
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(pending_events)")}
+        if "created_at" not in columns:
+            self.db.execute("ALTER TABLE pending_events ADD COLUMN created_at REAL NOT NULL DEFAULT 0")
         self.db.commit()
 
     def disabled(self, key):
@@ -97,8 +101,8 @@ class MeteringStore:
         return bool(row and row[0])
 
     def pending(self, key):
-        row = self.db.execute("SELECT event_id,client_id,bytes_used,body FROM pending_events WHERE public_key=?", (key,)).fetchone()
-        return PendingEvent(row[0], row[1], key, row[2], bytes(row[3])) if row else None
+        row = self.db.execute("SELECT event_id,client_id,bytes_used,body,created_at FROM pending_events WHERE public_key=?", (key,)).fetchone()
+        return PendingEvent(row[0], row[1], key, row[2], bytes(row[3]), row[4]) if row else None
 
     def prepare_delta(self, peer, current_total):
         if current_total < 0:
@@ -116,7 +120,7 @@ class MeteringStore:
                 return None
             event_id = "wg-" + uuid.uuid4().hex
             body = json.dumps({"client_id":peer.client_id,"bytes_used":delta},separators=(",",":"),sort_keys=True).encode()
-            self.db.execute("INSERT INTO pending_events VALUES(?,?,?,?,?)",(peer.public_key,event_id,peer.client_id,delta,body))
+            self.db.execute("INSERT INTO pending_events(public_key,event_id,client_id,bytes_used,body,created_at) VALUES(?,?,?,?,?,?)",(peer.public_key,event_id,peer.client_id,delta,body,time.time()))
         return self.pending(peer.public_key)
 
     def acknowledge(self, key, event_id):
@@ -134,7 +138,7 @@ class MeteringStore:
 
 class WireGuardMeter:
     def __init__(self, *, api_base_url, secret, interface, peers, store,
-                 command: Callable = subprocess.run, post: Callable | None = None):
+                 command: Callable = subprocess.run, post: Callable | None = None, max_outage_seconds: int = 120):
         parsed = urlsplit(api_base_url)
         if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
             raise ValueError("API base URL must use HTTPS")
@@ -144,7 +148,10 @@ class WireGuardMeter:
             raise ValueError("shared secret must contain at least 32 characters")
         self.api_url = api_base_url.rstrip("/") + METERING_PATH
         self.secret, self.interface, self.peers, self.store = secret, interface, peers, store
+        if max_outage_seconds < 1:
+            raise ValueError("max outage window must be positive")
         self.command, self.post = command, post or self._https_post
+        self.max_outage_seconds = max_outage_seconds
 
     @staticmethod
     def _https_post(url, headers, body):
@@ -189,18 +196,29 @@ class WireGuardMeter:
             try:
                 status = self._send(pending)
             except Exception as exc:
-                LOG.error("delivery failed; event retained (%s)",type(exc).__name__)
+                if time.time() - pending.created_at >= self.max_outage_seconds:
+                    try:
+                        self._remove_peer(key)
+                    except Exception as remove_exc:
+                        LOG.critical("metering outage and peer removal failed for %s (%s)",key[:10],type(remove_exc).__name__)
+                else:
+                    LOG.error("delivery failed; event retained for bounded retry (%s)",type(exc).__name__)
                 continue
             if 200 <= status < 300:
                 self.store.acknowledge(key,pending.event_id)
-            elif status in (404,409):
+            elif status in (401,403,404,409,410,413,422):
                 # Unknown client, expired/inactive entitlement, or exhausted quota.
                 try:
                     self._remove_peer(key)
                 except Exception as exc:
                     LOG.critical("peer enforcement failed for %s (%s); operator action required",key[:10],type(exc).__name__)
+            elif time.time() - pending.created_at >= self.max_outage_seconds:
+                try:
+                    self._remove_peer(key)
+                except Exception as exc:
+                    LOG.critical("metering outage and peer removal failed for %s (%s)",key[:10],type(exc).__name__)
             else:
-                LOG.error("metering API returned HTTP %s; event retained",status)
+                LOG.error("metering API returned HTTP %s; event retained for bounded retry",status)
 
 def build_from_env():
     api = os.environ.get("RMA_API_BASE_URL","")
@@ -209,13 +227,14 @@ def build_from_env():
     peers_path = os.environ.get("RMA_WG_PEERS_FILE","/etc/rma/peers.json")
     state_path = os.environ.get("RMA_METERING_STATE_DB","/var/lib/rma-meter/usage.sqlite3")
     interval = int(os.environ.get("RMA_POLL_INTERVAL_SECONDS","15"))
+    max_outage = int(os.environ.get("RMA_METERING_MAX_OUTAGE_SECONDS","120"))
     if interval < 5 or interval > 300:
         raise ValueError("poll interval must be between 5 and 300 seconds")
     Path(state_path).parent.mkdir(mode=0o700,parents=True,exist_ok=True)
     os.chmod(Path(state_path).parent,0o700)
     store = MeteringStore(state_path)
     meter = WireGuardMeter(api_base_url=api,secret=secret,interface=interface,
-                           peers=load_peers(peers_path),store=store)
+                           peers=load_peers(peers_path),store=store,max_outage_seconds=max_outage)
     return meter,store,interval
 
 def main():

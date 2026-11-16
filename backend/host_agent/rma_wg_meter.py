@@ -172,7 +172,7 @@ class WireGuardMeter:
     def _remove_peer(self,key):
         self._wg("set",self.interface,"peer",key,"remove")
         self.store.mark_disabled(key)
-        LOG.warning("peer suspended after quota/entitlement rejection: %s",key[:10])
+        LOG.warning("peer suspended after metering rejection or prolonged outage: %s",key[:10])
 
     def _send(self,event):
         timestamp = str(int(time.time()))

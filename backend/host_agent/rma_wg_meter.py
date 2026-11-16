@@ -91,6 +91,7 @@ class MeteringStore:
             public_key TEXT PRIMARY KEY, event_id TEXT NOT NULL UNIQUE, client_id INTEGER NOT NULL,
             bytes_used INTEGER NOT NULL CHECK(bytes_used>0), body BLOB NOT NULL,
             created_at REAL NOT NULL DEFAULT 0);
+          CREATE TABLE IF NOT EXISTS agent_state(key TEXT PRIMARY KEY, value REAL NOT NULL);
         """)
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(pending_events)")}
         if "created_at" not in columns:
@@ -133,6 +134,15 @@ class MeteringStore:
             self.db.execute("""INSERT INTO peer_counters(public_key,total_bytes,disabled) VALUES(?,0,1)
               ON CONFLICT(public_key) DO UPDATE SET disabled=1""",(key,))
             self.db.execute("DELETE FROM pending_events WHERE public_key=?",(key,))
+
+    def note_sample_failure(self, now):
+        with self.db:
+            self.db.execute("INSERT OR IGNORE INTO agent_state(key,value) VALUES('sample_fail_since',?)", (now,))
+        return self.db.execute("SELECT value FROM agent_state WHERE key='sample_fail_since'").fetchone()[0]
+
+    def clear_sample_failure(self):
+        with self.db:
+            self.db.execute("DELETE FROM agent_state WHERE key='sample_fail_since'")
 
     def close(self):
         self.db.close()
@@ -182,7 +192,23 @@ class WireGuardMeter:
         return self.post(self.api_url,headers,event.body)
 
     def run_once(self):
-        counters = self.sample()
+        try:
+            counters = self.sample()
+            self.store.clear_sample_failure()
+        except Exception as exc:
+            now = time.time()
+            failed_since = self.store.note_sample_failure(now)
+            if now - failed_since >= self.max_outage_seconds:
+                for key in self.peers:
+                    if self.store.disabled(key):
+                        continue
+                    try:
+                        self._remove_peer(key)
+                    except Exception as remove_exc:
+                        LOG.critical("WireGuard sampling outage and peer removal failed for %s (%s)",key[:10],type(remove_exc).__name__)
+            else:
+                LOG.error("WireGuard sampling failed; bounded fail-closed timer started (%s)",type(exc).__name__)
+            return
         for key,peer in self.peers.items():
             if self.store.disabled(key):
                 continue

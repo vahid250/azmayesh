@@ -12,25 +12,21 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 
 ## Operating assumptions and limitations
 1. Start the agent before enabling customer peers. The first sample is charged from zero.
-2. Run exactly one agent per WireGuard interface.
+2. Run exactly one agent per WireGuard interface. The backend and agent must refer to the same host/interface in the current lab topology.
 3. Polling is interval-based, not kernel-level byte-perfect shaping. Traffic can continue between a sample and peer removal.
 4. If counters decrease after an interface/host restart, the new counter value is counted as a fresh delta.
-5. Only peers in the trusted registry are metered.
+5. Only peers in the signed backend registry are managed and metered.
 6. The backend currently rejects a report that exceeds remaining quota rather than accepting a partial interval. The last interval can therefore be under-recorded; the peer is still removed.
 7. If wg peer removal fails, a critical error is logged and operator intervention is required. No successful suspension is claimed.
 
-## Peer registry
-Create /etc/rma/peers.json through the trusted provisioning system:
-    
-    {"peers":[{"client_id":123,"public_key":"BASE64_WIREGUARD_PUBLIC_KEY"}]}
+## Automatic peer registry
+The agent requests `POST /api/v1/internal/metering/peers` every polling cycle. The backend returns only registered WireGuard peers whose entitlements are active, unexpired, and have remaining quota. The agent reconciles the live interface against this signed registry and removes previously managed peers that disappear from it. No manually edited peer registry file is required.
 
-Do not place private keys in this file.
-
+The backend's current provisioning path runs `wg` locally. For the first real test, the backend process and this agent must therefore run on the same VPN host and use the same WireGuard interface. Cloudflare Workers must not run this agent or execute `wg` commands.
 ## Environment
 - RMA_API_BASE_URL: HTTPS backend origin
 - RMA_METERING_SHARED_SECRET: out-of-band secret, never committed
 - RMA_WG_INTERFACE: interface name, default wg0
-- RMA_WG_PEERS_FILE: registry path
 - RMA_METERING_STATE_DB: durable SQLite path
 - RMA_POLL_INTERVAL_SECONDS: 5-300 seconds, default 15
 - RMA_METERING_MAX_OUTAGE_SECONDS: disable the peer after this many seconds without an accepted usage report, default 120

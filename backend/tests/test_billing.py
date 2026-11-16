@@ -120,6 +120,31 @@ def test_verified_payment_creates_one_entitlement_and_is_idempotent(db):
     assert len(db.execute(select(Entitlement)).scalars().all()) == 1
 
 
+def test_paid_order_rejects_a_second_distinct_payment_event(db):
+    order = create_order(db, "telegram-4b", "sample-30d", "order-key-00000005b")
+    confirm_verified_payment(
+        db,
+        order_id=order.id,
+        provider="test-provider",
+        provider_event_id="evt-payment-original",
+        amount_minor=12500,
+        currency="TEST",
+    )
+    with pytest.raises(HTTPException) as exc:
+        confirm_verified_payment(
+            db,
+            order_id=order.id,
+            provider="test-provider",
+            provider_event_id="evt-payment-second",
+            amount_minor=12500,
+            currency="TEST",
+        )
+    assert exc.value.status_code == 409
+    events = db.execute(select(PaymentEvent).where(PaymentEvent.order_id == order.id)).scalars().all()
+    assert len(events) == 1
+    assert events[0].provider_event_id == "evt-payment-original"
+
+
 def test_same_provider_event_cannot_pay_another_order(db):
     first = create_order(db, "telegram-5", "sample-30d", "order-key-00000006")
     second = create_order(db, "telegram-5", "sample-30d", "order-key-00000007")

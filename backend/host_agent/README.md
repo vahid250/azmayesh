@@ -33,6 +33,7 @@ Do not place private keys in this file.
 - RMA_WG_PEERS_FILE: registry path
 - RMA_METERING_STATE_DB: durable SQLite path
 - RMA_POLL_INTERVAL_SECONDS: 5-300 seconds, default 15
+- RMA_METERING_MAX_OUTAGE_SECONDS: disable the peer after this many seconds without an accepted usage report, default 120
 - RMA_LOG_LEVEL: default INFO
 
 ## Operator-run installation outline

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -26,6 +26,7 @@ async function freePort() {
 
 const port = await freePort();
 const backendOrigin = "http://127.0.0.1:" + port;
+const backendDir = path.join(frontendDir, "..", "backend");
 const childEnv = {
   ...process.env,
   APP_ENV: "development",
@@ -36,6 +37,45 @@ const childEnv = {
   WG_SUBNET: "10.88.0.0/24",
   PYTHONPATH: path.join(frontendDir, "..", "backend")
 };
+const seedScript = `
+from datetime import datetime, timedelta, timezone
+from app.database import Base, engine, SessionLocal
+from app import models
+Base.metadata.create_all(bind=engine)
+with SessionLocal() as db:
+    order = models.Order(
+        telegram_user_id="lab-local",
+        plan_code="ci-test-plan",
+        idempotency_key="ci-integration-order-key",
+        amount_minor=1,
+        currency="TEST",
+        quota_bytes=1000000,
+        max_devices=2,
+        duration_days=30,
+        status="paid",
+    )
+    db.add(order)
+    db.flush()
+    db.add(models.Entitlement(
+        order_id=order.id,
+        telegram_user_id="lab-local",
+        quota_bytes=1000000,
+        consumed_bytes=0,
+        max_devices=2,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+        status="active",
+    ))
+    db.commit()
+`;
+const seedResult = spawnSync(
+  process.env.PYTHON || "python",
+  ["-c", seedScript],
+  { env: childEnv, cwd: backendDir, encoding: "utf8" }
+);
+if (seedResult.status !== 0) {
+  throw new Error("Could not seed test entitlement:\\n" + seedResult.stdout + seedResult.stderr);
+}
+
 const server = spawn(
   process.env.PYTHON || "python",
   ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String(port)],

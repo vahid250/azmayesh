@@ -19,9 +19,10 @@ def test_initial_migration_is_registered_and_has_expected_tables():
     revision = scripts.get_revision("head")
 
     assert revision is not None
-    assert revision.revision == "0003_order_payment_method"
+    assert revision.revision == "0004_order_terms_acceptance"
     source = Path(scripts.get_revision("0002_billing_ledger").path).read_text(encoding="utf-8")
-    payment_method_migration = Path(revision.path).read_text(encoding="utf-8")
+    payment_method_migration = Path(scripts.get_revision("0003_order_payment_method").path).read_text(encoding="utf-8")
+    terms_migration = Path(revision.path).read_text(encoding="utf-8")
     initial = Path(scripts.get_revision("0001_initial").path).read_text(encoding="utf-8")
     assert '"wireguard_clients"' in initial
     assert '"wireguard_client_owners"' in initial
@@ -29,6 +30,8 @@ def test_initial_migration_is_registered_and_has_expected_tables():
     assert '"entitlements"' in source
     assert '"usage_records"' in source
     assert "payment_method" in payment_method_migration
+    assert \"order_terms_acceptances\" in terms_migration
+    assert "terms_version" in terms_migration
     assert "ondelete=" + chr(34) + "RESTRICT" + chr(34) in source
 
 
@@ -51,11 +54,14 @@ def test_initial_migration_executes_against_empty_sqlite_database(tmp_path, monk
             "payment_events",
             "entitlements",
             "usage_records",
+            "order_terms_acceptances",
         }
         columns = {column["name"] for column in inspector.get_columns("wireguard_clients")}
         assert {"private_key_encrypted", "config_encrypted", "created_at"} <= columns
         order_columns = {column["name"] for column in inspector.get_columns("orders")}
         assert "payment_method" in order_columns
+        acceptance_columns = {column["name"] for column in inspector.get_columns("order_terms_acceptances")}
+        assert {"order_id", "telegram_user_id", "terms_version", "accepted_at"} <= acceptance_columns
     finally:
         engine.dispose()
 

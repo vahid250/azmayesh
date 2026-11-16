@@ -245,3 +245,24 @@ def test_real_wireguard_registration_failure_rolls_back_client(monkeypatch):
         assert db.execute(select(WireGuardClient)).scalars().all() == []
     finally:
         db.close()
+
+
+
+def test_production_config_issuance_is_blocked_until_entitlements_exist(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+    from app.config import settings
+    from app.main import WireGuardRequest, create_wireguard_config
+
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "mock_mode", True)
+
+    with pytest.raises(HTTPException) as exc:
+        create_wireguard_config(
+            WireGuardRequest(client_name="must-not-issue"),
+            auth={"user": {"id": 1001}, "auth_method": "telegram_webapp"},
+            db=None,
+        )
+
+    assert exc.value.status_code == 503
+    assert "payment verification" in exc.value.detail.lower()

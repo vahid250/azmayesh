@@ -192,10 +192,47 @@ def record_verified_usage(
                 entitlement.status = "expired"
                 db.commit()
             elif entitlement.consumed_bytes + bytes_used > entitlement.quota_bytes:
+                # Record the full measured interval for audit, but cap quota
+                # consumption at the purchased allowance. The host agent will
+                # receive success, then remove peers from the next registry.
+                entitlement.consumed_bytes = entitlement.quota_bytes
                 entitlement.status = "exhausted"
-                db.commit()
-        raise HTTPException(status_code=409, detail="Entitlement expired, inactive, or quota exceeded")
+                db.add(UsageRecord(
+                    entitlement_id=entitlement_id,
+                    source=source,
+                    source_event_id=event_id,
+                    bytes_used=bytes_used,
+                ))
+                try:
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()
+                    existing = db.execute(
+                        select(UsageRecord).where(
+                            UsageRecord.source == source,
+                            UsageRecord.source_event_id == event_id,
+                        )
+                    ).scalar_one_or_none()
+                    if existing and existing.entitlement_id == entitlement_id and existing.bytes_used == bytes_used:
+                        return db.get(Entitlement, entitlement_id)
+                    entitlement = db.get(Entitlement, entitlement_id)
+                    if entitlement is not None and entitlement.status == "active":
+                        entitlement.status = "suspended"
+                        db.commit()
+                    raise HTTPException(status_code=409, detail="Usage event conflicts with an existing record")
+                db.refresh(entitlement)
+                return entitlement
+        raise HTTPException(status_code=409, detail="Entitlement expired or inactive")
 
+    db.execute(
+        update(Entitlement)
+        .where(
+            Entitlement.id == entitlement_id,
+            Entitlement.status == "active",
+            Entitlement.consumed_bytes >= Entitlement.quota_bytes,
+        )
+        .values(status="exhausted")
+    )
     db.add(UsageRecord(
         entitlement_id=entitlement_id,
         source=source,

@@ -6,12 +6,15 @@ import time
 from fastapi import HTTPException
 
 METERING_PATH = "/api/v1/internal/metering/usage"
+METERING_REGISTRY_PATH = "/api/v1/internal/metering/peers"
 MAX_CLOCK_SKEW_SECONDS = 300
 
 
-def verify_metering_signature(
+def verify_signed_internal_request(
     *,
     secret: str,
+    method: str,
+    path: str,
     timestamp: str,
     event_id: str,
     signature: str,
@@ -36,7 +39,7 @@ def verify_metering_signature(
 
     body_hash = hashlib.sha256(body).hexdigest()
     canonical = "\n".join(
-        ["POST", METERING_PATH, timestamp, event_id, body_hash]
+        [method.upper(), path, timestamp, event_id, body_hash]
     )
     expected = hmac.new(
         secret.encode("utf-8"),
@@ -45,3 +48,9 @@ def verify_metering_signature(
     ).hexdigest()
     if not hmac.compare_digest(expected, signature.lower()):
         raise HTTPException(status_code=401, detail="Invalid metering signature")
+
+
+def verify_metering_signature(*, secret: str, timestamp: str, event_id: str, signature: str, body: bytes, now: int | None = None) -> None:
+    """Backward-compatible verifier for usage reports."""
+    verify_signed_internal_request(secret=secret, method="POST", path=METERING_PATH,
+        timestamp=timestamp, event_id=event_id, signature=signature, body=body, now=now)

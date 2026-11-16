@@ -115,3 +115,26 @@ def test_network_failure_keeps_pending_event_for_retry(tmp_path):
     meter.run_once()
     assert store.pending(PUB) is not None
     store.close()
+
+
+def test_extended_metering_outage_removes_peer_after_grace_period(tmp_path):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG(15, 5)
+
+    def fail(*_):
+        raise OSError("backend unavailable")
+
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET,
+        interface="wg0", peers={PUB: Peer(7, PUB)}, store=store,
+        command=wg, post=fail, max_outage_seconds=1,
+    )
+    meter.run_once()
+    assert store.pending(PUB) is not None
+    store.db.execute("UPDATE pending_events SET created_at=0 WHERE public_key=?", (PUB,))
+    store.db.commit()
+    meter.run_once()
+    assert store.disabled(PUB)
+    assert store.pending(PUB) is None
+    assert any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
+    store.close()

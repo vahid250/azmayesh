@@ -367,6 +367,7 @@ def public_terms_metadata():
         "version": CURRENT_TERMS_VERSION,
         "status": "draft_testing_only",
         "document_path": TERMS_DOCUMENT_PATH,
+        "privacy_document_path": PRIVACY_DOCUMENT_PATH,
         "acceptance_enabled": True,
         "legal_effect": "not_final_terms_or_a_payment_authorization",
     }

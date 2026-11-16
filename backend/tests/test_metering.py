@@ -1,0 +1,161 @@
+import hashlib
+import hmac
+import json
+import time
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.config import settings
+from app.database import Base, get_db
+from app.metering import METERING_PATH, verify_metering_signature
+from app.models import Entitlement, Order
+
+
+SECRET = "unit-test-metering-secret-with-more-than-32-bytes"
+
+
+def sign(body: bytes, timestamp: str, event_id: str, secret: str = SECRET) -> str:
+    body_hash = hashlib.sha256(body).hexdigest()
+    canonical = "\n".join(["POST", METERING_PATH, timestamp, event_id, body_hash])
+    return hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()
+
+
+def test_metering_signature_accepts_valid_fresh_request():
+    timestamp = str(int(time.time()))
+    body = b'{"entitlement_id":1,"bytes_used":128}'
+    event_id = "wg-agent-event-001"
+    verify_metering_signature(
+        secret=SECRET,
+        timestamp=timestamp,
+        event_id=event_id,
+        signature=sign(body, timestamp, event_id),
+        body=body,
+    )
+
+
+def test_metering_signature_rejects_tampered_body_and_stale_timestamp():
+    timestamp = str(int(time.time()))
+    event_id = "wg-agent-event-002"
+    signature = sign(b'{"entitlement_id":1,"bytes_used":128}', timestamp, event_id)
+
+    with pytest.raises(HTTPException) as tampered:
+        verify_metering_signature(
+            secret=SECRET,
+            timestamp=timestamp,
+            event_id=event_id,
+            signature=signature,
+            body=b'{"entitlement_id":1,"bytes_used":129}',
+        )
+    assert tampered.value.status_code == 401
+
+    with pytest.raises(HTTPException) as stale:
+        verify_metering_signature(
+            secret=SECRET,
+            timestamp="1700000000",
+            event_id=event_id,
+            signature=signature,
+            body=b'{"entitlement_id":1,"bytes_used":128}',
+        )
+    assert stale.value.status_code == 401
+
+
+def test_metering_signature_fails_closed_without_strong_secret():
+    with pytest.raises(HTTPException) as exc:
+        verify_metering_signature(
+            secret="",
+            timestamp=str(int(time.time())),
+            event_id="wg-agent-event-003",
+            signature="0" * 64,
+            body=b"{}",
+        )
+    assert exc.value.status_code == 503
+
+
+def test_signed_usage_endpoint_applies_quota_once_and_rejects_event_reuse(monkeypatch):
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    with TestingSession() as db:
+        order = Order(
+            telegram_user_id="metering-user",
+            plan_code="metering-test",
+            idempotency_key="metering-test-order-0001",
+            amount_minor=1,
+            currency="TEST",
+            quota_bytes=1000,
+            max_devices=1,
+            duration_days=30,
+            status="paid",
+        )
+        db.add(order)
+        db.flush()
+        entitlement = Entitlement(
+            order_id=order.id,
+            telegram_user_id="metering-user",
+            quota_bytes=1000,
+            consumed_bytes=0,
+            max_devices=1,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+            status="active",
+        )
+        db.add(entitlement)
+        db.commit()
+        entitlement_id = entitlement.id
+
+    def override_get_db():
+        db = TestingSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    monkeypatch.setattr(settings, "metering_shared_secret", SECRET)
+    from app.main import app
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        client = TestClient(app)
+        timestamp = str(int(time.time()))
+        event_id = "wg-agent-event-004"
+        body = json.dumps(
+            {"entitlement_id": entitlement_id, "bytes_used": 350},
+            separators=(",", ":"),
+        ).encode()
+        headers = {
+            "X-RMA-Timestamp": timestamp,
+            "X-RMA-Event-Id": event_id,
+            "X-RMA-Signature": sign(body, timestamp, event_id),
+            "Content-Type": "application/json",
+        }
+
+        first = client.post(METERING_PATH, content=body, headers=headers)
+        assert first.status_code == 200
+        assert first.json()["consumed_bytes"] == 350
+        assert first.json()["remaining_bytes"] == 650
+
+        repeated = client.post(METERING_PATH, content=body, headers=headers)
+        assert repeated.status_code == 200
+        assert repeated.json()["consumed_bytes"] == 350
+
+        changed_body = json.dumps(
+            {"entitlement_id": entitlement_id, "bytes_used": 351},
+            separators=(",", ":"),
+        ).encode()
+        changed_headers = {
+            **headers,
+            "X-RMA-Signature": sign(changed_body, timestamp, event_id),
+        }
+        conflict = client.post(METERING_PATH, content=changed_body, headers=changed_headers)
+        assert conflict.status_code == 409
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()

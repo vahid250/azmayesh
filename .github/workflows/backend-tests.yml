@@ -1,4 +1,4 @@
-name: R&MA Backend Tests
+name: R&MA Backend, Billing, and Metering Tests
 
 on:
   push:

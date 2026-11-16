@@ -8,7 +8,7 @@ This runbook is for an isolated staging test only. It does not authorize a produ
 - The actual WireGuard interface runs on a separate Linux VPN server.
 - The trusted host agent runs only on that VPN server and is the only R&MA component that needs WireGuard network-administration capability.
 - The API and VPN host share one operator-managed HMAC secret, delivered through their secret stores. Never send it in chat, commit it, or put it in a client configuration.
-- The API setting WG_INTERFACE and agent setting RMA_WG_INTERFACE must match exactly.
+- The API setting WG_INTERFACE and agent setting RMA_WG_INTERFACE must match exactly. The backend does not need CAP_NET_ADMIN; only the isolated host agent receives it.
 
 ## 2. Staging API configuration
 
@@ -47,7 +47,7 @@ Install the systemd unit at /etc/systemd/system/rma-wg-meter.service. Review the
 
 Before enabling the service, run:
 
-    sudo -u rma-meter env $(cat /etc/rma/metering.env | xargs) python3 /opt/rma/host_agent/rma_wg_meter.py --check
+    sudo systemd-run --wait --pipe --collect --property=User=rma-meter --property=EnvironmentFile=/etc/rma/metering.env --property=CapabilityBoundingSet=CAP_NET_ADMIN --property=AmbientCapabilities=CAP_NET_ADMIN /usr/bin/python3 /opt/rma/host_agent/rma_wg_meter.py --check
 
 Expected output is JSON with:
 - api_registry_authenticated=true
@@ -56,7 +56,7 @@ Expected output is JSON with:
 - pending_removal_count=0
 - read_only=true
 
-The check command does not add or remove peers and does not submit usage.
+The check command does not add or remove peers and does not submit usage. The transient systemd unit supplies the same limited network capability and protected environment-file loading as the service.
 
 If the API cannot be reached, the signature is rejected, the interface differs, or WireGuard counters cannot be read, stop here and correct the configuration.
 

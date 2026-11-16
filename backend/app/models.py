@@ -132,7 +132,7 @@ class UsageRecord(Base):
 
 
 class OrderTermsAcceptance(Base):
-    """Immutable record that a user accepted a specific terms version for an order."""
+    """Audit record of a user accepting a specific terms version for an order."""
     __tablename__ = "order_terms_acceptances"
     __table_args__ = (
         UniqueConstraint("order_id", name="uq_order_terms_acceptance_order"),

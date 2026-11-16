@@ -25,6 +25,7 @@ def test_render_blueprint_targets_experimental_branch_and_safe_mock_mode():
     for key in ("DATABASE_URL", "DIRECT_DATABASE_URL"):
         assert env[key]["sync"] is False
     assert env["ENCRYPTION_KEY"]["generateValue"] is True
+    assert env["METERING_SHARED_SECRET"]["sync"] is False
     assert "TELEGRAM_BOT_TOKEN" not in env
     assert "TELEGRAM_WEBHOOK_SECRET" not in env
 
@@ -49,6 +50,8 @@ def test_cloudflare_python_worker_config_keeps_mock_mode_and_hyperdrive_binding(
     assert config["main"] == "worker.py"
     assert "python_workers" in config["compatibility_flags"]
     assert config["vars"]["MOCK_MODE"] == "true"
+    from app.config import _WORKER_ENV_FIELDS
+    assert _WORKER_ENV_FIELDS["METERING_SHARED_SECRET"] == "metering_shared_secret"
 
     hyperdrive = config["hyperdrive"]
     assert len(hyperdrive) == 1

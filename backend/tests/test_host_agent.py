@@ -169,9 +169,11 @@ def test_signed_registry_adds_authorized_peer_and_removes_stale_peer(tmp_path):
     wg = FakeWG(10, 5)
     responses = [
         {"interface": "wg0", "peers": [{
-            "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32"
+            "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "peer_registered"
+        }], "remove_peers": []},
+        {"interface": "wg0", "peers": [], "remove_peers": [{
+            "client_id": 7, "public_key": PUB, "state": "suspended"
         }]},
-        {"interface": "wg0", "peers": []},
     ]
     registry_requests = []
     sent_usage = []

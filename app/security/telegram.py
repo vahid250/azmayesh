@@ -16,18 +16,24 @@ def validate_telegram_init_data(
     max_age_seconds: int = 300,
     now: int | None = None,
 ) -> dict:
-    """Validate Telegram Mini App initData per Telegram's HMAC-SHA-256 scheme."""
+    """Validate Telegram Mini App initData using Telegram's HMAC-SHA-256 scheme."""
     if not init_data or not bot_token:
         raise TelegramInitDataError("Missing initData or bot token")
 
     try:
         pairs = parse_qsl(init_data, keep_blank_values=True, strict_parsing=True)
+        if len({key for key, _ in pairs}) != len(pairs):
+            raise TelegramInitDataError("Duplicate initData fields")
         values = dict(pairs)
     except (ValueError, TypeError) as exc:
         raise TelegramInitDataError("Malformed initData") from exc
 
     received_hash = values.pop("hash", None)
-    if not received_hash or len(received_hash) != 64:
+    if (
+        not received_hash
+        or len(received_hash) != 64
+        or any(ch not in "0123456789abcdefABCDEF" for ch in received_hash)
+    ):
         raise TelegramInitDataError("Missing or invalid hash")
 
     data_check_string = "\n".join(
@@ -40,7 +46,7 @@ def validate_telegram_init_data(
         secret_key, data_check_string.encode("utf-8"), hashlib.sha256
     ).hexdigest()
 
-    if not hmac.compare_digest(expected_hash, received_hash):
+    if not hmac.compare_digest(expected_hash, received_hash.lower()):
         raise TelegramInitDataError("Invalid initData signature")
 
     try:
@@ -58,7 +64,11 @@ def validate_telegram_init_data(
 
     try:
         user = json.loads(values["user"])
-        if not isinstance(user, dict) or not isinstance(user.get("id"), int):
+        if (
+            not isinstance(user, dict)
+            or not isinstance(user.get("id"), int)
+            or isinstance(user.get("id"), bool)
+        ):
             raise ValueError("Invalid user object")
     except (json.JSONDecodeError, ValueError) as exc:
         raise TelegramInitDataError("Invalid Telegram user payload") from exc

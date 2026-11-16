@@ -1,4 +1,5 @@
 import hmac
+import json
 from urllib.parse import urlparse
 
 import httpx
@@ -65,9 +66,21 @@ async def telegram_webhook(
     if not expected or not supplied or not hmac.compare_digest(expected, supplied):
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
-    update = await request.json()
+    raw_body = await request.body()
+    if len(raw_body) > 65536:
+        raise HTTPException(status_code=413, detail="Telegram update is too large")
+    try:
+        update = json.loads(raw_body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="Invalid Telegram update payload") from None
+    if not isinstance(update, dict):
+        raise HTTPException(status_code=400, detail="Invalid Telegram update payload")
     message = update.get("message") or update.get("edited_message") or {}
+    if not isinstance(message, dict):
+        return {"ok": True}
     chat = message.get("chat") or {}
+    if not isinstance(chat, dict):
+        return {"ok": True}
     chat_id = chat.get("id")
     text = message.get("text", "")
 

@@ -11,7 +11,7 @@ from app.database import Base, engine, get_db
 from app.models import Entitlement, Order, Plan, WireGuardClient, WireGuardClientOwner
 from app.security import decrypt_secret, require_authenticated_request
 from app.billing import active_entitlement_for_user, create_order as create_order_record, record_verified_usage
-from app.metering import METERING_PATH, verify_metering_signature
+from app.metering import METERING_PATH, METERING_REGISTRY_PATH, verify_metering_signature, verify_signed_internal_request
 from app.wireguard import (
     _validate_real_server,
     get_wireguard_peer_status,
@@ -46,6 +46,10 @@ class OrderRequest(BaseModel):
 class UsageReportRequest(BaseModel):
     client_id: int = Field(gt=0)
     bytes_used: int = Field(gt=0, le=10**12)
+
+
+class HostRegistryRequest(BaseModel):
+    interface: str = Field(min_length=1, max_length=15)
 
 
 def order_payload(order: Order) -> dict:
@@ -151,6 +155,61 @@ async def ingest_trusted_usage(
         "entitlement_id": entitlement.id,
         "consumed_bytes": entitlement.consumed_bytes,
         "remaining_bytes": max(0, entitlement.quota_bytes - entitlement.consumed_bytes),
+    }
+
+
+@app.post(METERING_REGISTRY_PATH)
+async def get_trusted_wireguard_registry(
+    request: Request,
+    x_rma_timestamp: str = Header(..., alias="X-RMA-Timestamp"),
+    x_rma_event_id: str = Header(..., alias="X-RMA-Event-Id"),
+    x_rma_signature: str = Header(..., alias="X-RMA-Signature"),
+    db: Session = Depends(get_db),
+):
+    """Return only currently entitled, registered R&MA peers to the trusted host agent."""
+    raw_body = await request.body()
+    if len(raw_body) > 4096:
+        raise HTTPException(status_code=413, detail="Registry request is too large")
+    verify_signed_internal_request(
+        secret=get_settings().metering_shared_secret,
+        method="POST",
+        path=METERING_REGISTRY_PATH,
+        timestamp=x_rma_timestamp,
+        event_id=x_rma_event_id,
+        signature=x_rma_signature,
+        body=raw_body,
+    )
+    try:
+        payload = HostRegistryRequest.model_validate_json(raw_body)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid host registry request") from None
+    if payload.interface != get_settings().wg_interface:
+        raise HTTPException(status_code=409, detail="Requested WireGuard interface does not match this backend")
+    now = datetime.now(timezone.utc)
+    rows = db.execute(
+        select(WireGuardClient, WireGuardClientOwner)
+        .join(WireGuardClientOwner, WireGuardClientOwner.client_id == WireGuardClient.id)
+        .join(Entitlement, Entitlement.id == WireGuardClientOwner.entitlement_id)
+        .where(
+            WireGuardClient.state == "peer_registered",
+            Entitlement.status == "active",
+            Entitlement.expires_at > now,
+            Entitlement.consumed_bytes < Entitlement.quota_bytes,
+        )
+        .order_by(WireGuardClient.id.asc())
+        .limit(2000)
+    ).all()
+    return {
+        "interface": payload.interface,
+        "generated_at": now,
+        "peers": [
+            {
+                "client_id": client.id,
+                "public_key": client.public_key,
+                "allowed_ips": client.client_ip,
+            }
+            for client, _owner in rows
+        ],
     }
 
 

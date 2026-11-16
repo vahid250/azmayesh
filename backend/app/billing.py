@@ -76,6 +76,12 @@ def create_order(
             )
         ).scalar_one_or_none()
         if existing and existing.plan_code == plan_code and existing.payment_method == payment_method:
+            if terms_version is not None:
+                accepted = db.execute(
+                    select(OrderTermsAcceptance).where(OrderTermsAcceptance.order_id == existing.id)
+                ).scalar_one_or_none()
+                if accepted is None or accepted.telegram_user_id != telegram_user_id or accepted.terms_version != terms_version:
+                    raise HTTPException(status_code=409, detail="Terms acceptance is missing or does not match this order")
             return existing
         raise HTTPException(status_code=409, detail="Order idempotency conflict")
     db.refresh(order)

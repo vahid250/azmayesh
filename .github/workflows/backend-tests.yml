@@ -2,7 +2,7 @@ name: R&MA Backend Tests
 
 on:
   push:
-    branches: ["work/rma-backend-dashboard"]
+    branches: ["work/rma-backend-dashboard", "rebuild/**"]
     paths:
       - "backend/**"
       - "frontend/**"

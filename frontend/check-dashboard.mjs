@@ -6,12 +6,14 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const html = fs.readFileSync(path.join(here, "index.html"), "utf8");
 const apiClient = fs.readFileSync(path.join(here, "rma-api.js"), "utf8");
+const termsClient = fs.readFileSync(path.join(here, "rma-terms.js"), "utf8");
 const apiProxy = fs.readFileSync(path.join(here, "functions", "api", "[[path]].js"), "utf8");
 const healthProxy = fs.readFileSync(path.join(here, "functions", "health.js"), "utf8");
 
 const required = [
   'name="rma-api-base"',
   'src="/rma-api.js"',
+  'src="/rma-terms.js"',
   'id="rmaApiStatusPanel"',
   'id="rmaLabNotice"',
   'id="rmaLoadConfigsBtn"',
@@ -49,6 +51,9 @@ if (!html.includes("disableUnimplementedTelegramCommands") || !html.includes('ur
 }
 if (!html.includes('const webFallbackUrl = "https://t.me/RMA_Connect_Bot";')) {
   throw new Error("Quick launch must use the plain bot URL.");
+}
+if (!termsClient.includes("draft_testing_only") || !termsClient.includes("تا فعال‌شدن سفارش ذخیره نمی‌شود") || !apiClient.includes("createOrder: function") || !apiClient.includes("terms_version: termsVersion")) {
+  throw new Error("Terms acceptance preview and order API contract are incomplete.");
 }
 if (!apiClient.includes("X-Telegram-Init-Data") || !apiClient.includes("/v1/public/service-status") || !apiClient.includes("serviceStatus: function ()")) {
   throw new Error("Telegram initData header missing from API client.");

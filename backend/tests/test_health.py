@@ -104,17 +104,18 @@ def test_database_diagnostic_hides_database_driver_errors():
     assert "password" not in response.text
 
 
-def test_public_service_status_announces_thirty_day_trial_and_referral_reward(monkeypatch):
-    monkeypatch.setattr(settings, "service_mode", "trial")
+def test_public_service_status_reports_prelaunch_and_blocks_new_activations(monkeypatch):
+    monkeypatch.setattr(settings, "service_mode", "prelaunch")
     monkeypatch.setattr(settings, "trial_duration_days", 30)
     monkeypatch.setattr(settings, "referral_reward_bytes", 104857600)
     response = TestClient(main.app).get("/api/v1/public/service-status")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["mode"] == "trial"
+    assert payload["mode"] == "prelaunch"
     assert payload["trial_duration_days"] == 30
     assert payload["referral_reward_bytes"] == 100 * 1024 * 1024
-    assert payload["accepting_new_activations"] is True
+    assert payload["accepting_new_activations"] is False
+    assert "هنوز دوره آزمایشی آغاز نشده" in payload["message"]
 
 
 def test_paused_service_announces_return_and_blocks_new_orders(monkeypatch):

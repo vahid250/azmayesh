@@ -59,12 +59,14 @@ def test_worker_database_fails_closed_without_hyperdrive(monkeypatch):
     assert "HYPERDRIVE" in exc.value.detail
 
 
-def test_worker_never_attempts_real_wireguard_commands(monkeypatch):
+def test_worker_validates_remote_wireguard_config_without_local_wg_access(monkeypatch):
+    import base64
+
     monkeypatch.setenv("RMA_CLOUDFLARE_WORKER", "1")
     monkeypatch.setattr(settings, "mock_mode", False)
+    monkeypatch.setattr(settings, "wg_server_endpoint", "198.51.100.20:51820")
+    monkeypatch.setattr(settings, "wg_server_public_key", base64.b64encode(b"s" * 32).decode())
 
-    with pytest.raises(HTTPException) as exc:
-        _validate_real_server()
-
-    assert exc.value.status_code == 503
-    assert "separate WireGuard server" in exc.value.detail
+    # Config metadata can be validated in the Worker; actual wg commands are
+    # exclusively executed by the separately deployed trusted host agent.
+    _validate_real_server()

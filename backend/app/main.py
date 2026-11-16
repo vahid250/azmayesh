@@ -198,7 +198,7 @@ async def get_trusted_wireguard_registry(
         .join(WireGuardClientOwner, WireGuardClientOwner.client_id == WireGuardClient.id)
         .outerjoin(Entitlement, Entitlement.id == WireGuardClientOwner.entitlement_id)
         .where(WireGuardClient.state.in_([
-            "pending_peer_registration", "peer_registered", "revocation_pending", "suspended", "revoked"
+            "pending_peer_registration", "peer_registered", "revocation_pending"
         ]))
         .order_by(WireGuardClient.id.asc())
         .limit(2001)

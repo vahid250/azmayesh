@@ -127,7 +127,6 @@ def test_signed_usage_endpoint_applies_quota_once_and_rejects_event_reuse(monkey
         ))
         db.commit()
         client_id = client.id
-        entitlement_id = entitlement.id
 
     def override_get_db():
         db = TestingSession()
@@ -162,6 +161,20 @@ def test_signed_usage_endpoint_applies_quota_once_and_rejects_event_reuse(monkey
         repeated = client.post(METERING_PATH, content=body, headers=headers)
         assert repeated.status_code == 200
         assert repeated.json()["consumed_bytes"] == 350
+
+        unknown_event_id = "wg-agent-event-unknown"
+        unknown_body = json.dumps(
+            {"client_id": 999999, "bytes_used": 1},
+            separators=(",", ":"),
+        ).encode()
+        unknown_headers = {
+            "X-RMA-Timestamp": timestamp,
+            "X-RMA-Event-Id": unknown_event_id,
+            "X-RMA-Signature": sign(unknown_body, timestamp, unknown_event_id),
+            "Content-Type": "application/json",
+        }
+        unknown = client.post(METERING_PATH, content=unknown_body, headers=unknown_headers)
+        assert unknown.status_code == 404
 
         changed_body = json.dumps(
             {"client_id": client_id, "bytes_used": 351},

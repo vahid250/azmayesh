@@ -32,6 +32,26 @@ def test_webhook_requires_secret(monkeypatch):
     assert response.status_code == 401
 
 
+def test_webhook_rejects_malformed_json(monkeypatch):
+    monkeypatch.setattr(settings, "telegram_webhook_secret", "unit-test-secret")
+    response = TestClient(app).post(
+        "/telegram/webhook",
+        headers={"X-Telegram-Bot-Api-Secret-Token": "unit-test-secret"},
+        content=b"{invalid-json",
+    )
+    assert response.status_code == 400
+
+
+def test_webhook_rejects_oversized_payload(monkeypatch):
+    monkeypatch.setattr(settings, "telegram_webhook_secret", "unit-test-secret")
+    response = TestClient(app).post(
+        "/telegram/webhook",
+        headers={"X-Telegram-Bot-Api-Secret-Token": "unit-test-secret"},
+        content=b" " * 65537,
+    )
+    assert response.status_code == 413
+
+
 def test_webhook_ignores_non_start_updates(monkeypatch):
     monkeypatch.setattr(settings, "telegram_webhook_secret", "unit-test-secret")
     client = TestClient(app)

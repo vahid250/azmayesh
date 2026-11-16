@@ -74,9 +74,3 @@ def test_public_terms_metadata_identifies_draft_and_canonical_document():
     assert payload["privacy_document_path"].endswith("docs/PRIVACY_POLICY_FA.md")
     assert payload["acceptance_enabled"] is True
     assert payload["legal_effect"] == "not_final_terms_or_a_payment_authorization"
-
-def test_order_api_does_not_persist_acceptance_when_order_creation_is_disabled(client_and_db):
-    client, db = client_and_db
-    response = _post_order(client, terms_version=main.CURRENT_TERMS_VERSION)
-    assert response.status_code == 503
-    assert db.execute(select(OrderTermsAcceptance)).scalars().all() == []

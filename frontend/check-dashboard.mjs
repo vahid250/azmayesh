@@ -19,7 +19,12 @@ const required = [
   'id="rmaConfigsList"',
   'id="rmaIssuedConfig"',
   "telegramApp.ready()",
-  "telegramApp.expand()"
+  "telegramApp.expand()",
+  'id="rialPaymentOption"',
+  'id="cryptoPaymentOption"',
+  'id="paymentMethodFeedback"',
+  "به‌زودی فعال خواهد شد",
+  "درگاه رمزارزی هنوز متصل نشده"
 ];
 for (const marker of required) {
   if (!html.includes(marker)) throw new Error("Dashboard integration marker missing: " + marker);
@@ -30,7 +35,7 @@ if (!html.includes('aria-disabled="true" tabindex="-1" id="selectedPlanCta"')) {
 if (!html.includes('aria-disabled="true" tabindex="-1" id="socialMediaPassBtn"')) {
   throw new Error("Unimplemented social VPN offer must remain disabled.");
 }
-if (html.includes("خرید و فعال‌سازی پلن") || html.includes("امکان پرداخت امن ریالی") || html.includes("۵۰۰MB رایگان")) {
+if (html.includes("کارت‌به‌کارت شتابی هوشمند") || html.includes("کیف پول و تلگرام استارز") || html.includes("امکان پرداخت امن ریالی") || html.includes("۵۰۰MB رایگان")) {
   throw new Error("Unimplemented purchase or free-data offer is presented as active.");
 }
 

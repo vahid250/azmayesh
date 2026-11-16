@@ -22,13 +22,17 @@ class FakeWG:
         self.rx, self.tx = rx, tx
         self.calls = []
         self.fail_show = False
+        self.hide_peer = False
 
     def __call__(self, args, **kwargs):
         self.calls.append(args)
         if args[1:3] == ["show", "wg0"]:
             if self.fail_show:
                 raise subprocess.CalledProcessError(1, args, stderr="simulated wg dump failure")
-            return subprocess.CompletedProcess(args, 0, dump(self.rx, self.tx), "")
+            output = "\t".join(["private", "public", "51820", "off"]) + "\n" if self.hide_peer else dump(self.rx, self.tx)
+            return subprocess.CompletedProcess(args, 0, output, "")
+        if args[1:3] == ["set", "wg0"] and "allowed-ips" in args:
+            self.hide_peer = False
         return subprocess.CompletedProcess(args, 0, "", "")
 
 
@@ -216,6 +220,7 @@ def test_pending_peer_is_acknowledged_only_after_host_observes_or_registers_it(t
 
     store = MeteringStore(str(tmp_path / "state.sqlite3"))
     wg = FakeWG(0, 0)
+    wg.hide_peer = True
     registry = {
         "interface": "wg0",
         "peers": [{

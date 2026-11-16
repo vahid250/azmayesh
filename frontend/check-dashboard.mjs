@@ -24,7 +24,11 @@ const required = [
   'id="cryptoPaymentOption"',
   'id="paymentMethodFeedback"',
   "به‌زودی فعال خواهد شد",
-  "درگاه رمزارزی هنوز متصل نشده"
+  "درگاه رمزارزی هنوز متصل نشده",
+  "برنامه دوره آزمایشی ۳۰ روزه R&amp;MA",
+  "100 MB PER REF",
+  "serviceStatus: function ()",
+  "servicePaused = status.mode === \"paused\""
 ];
 for (const marker of required) {
   if (!html.includes(marker)) throw new Error("Dashboard integration marker missing: " + marker);
@@ -44,14 +48,18 @@ if (/[?&]start=/i.test(html)) throw new Error("Unsupported Telegram start payloa
 if (!html.includes("disableUnimplementedTelegramCommands") || !html.includes('url.searchParams.has("start")')) {
   throw new Error("Runtime guard for unsupported Telegram commands is missing.");
 }
-if (!html.includes('const webFallbackUrl = "https://t.me/RMA_WireGuardBot";')) {
+if (!html.includes('const webFallbackUrl = "https://t.me/RMA_Connect_Bot";')) {
   throw new Error("Quick launch must use the plain bot URL.");
 }
-if (!apiClient.includes("X-Telegram-Init-Data")) {
+if (!apiClient.includes("X-Telegram-Init-Data") || !apiClient.includes("/v1/public/service-status")) {
   throw new Error("Telegram initData header missing from API client.");
 }
 
 const forbiddenDemoClaims = [
+  "1 GB PER REF",
+  "۱ گیگابایت هدیه (Referral",
+  "۴ گیگابایت ترافیک هدیه",
+  "به محض زدن دکمه Start توسط دوست شما",
   "READY_TO_SPAWN",
   "~28ms",
   "~29ms",

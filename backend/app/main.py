@@ -401,7 +401,7 @@ def health():
         "real_provisioning_configured": provisioning_ready,
         "provisioning_reason": provisioning_reason,
         "host_agent_control_plane_configured": len(get_settings().metering_shared_secret) >= 32,
-        "host_agent_online": False,
+        "host_agent_online": "not_verified",
         "connectivity_verified": False,
     }
 

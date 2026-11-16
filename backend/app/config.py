@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     wg_dns: str = "1.1.1.1,8.8.8.8"
     wg_mtu: int = 1360
     # Public trial/referral policy and a safe pause switch for new activations.
-    service_mode: str = "trial"
+    service_mode: str = "prelaunch"
     trial_duration_days: int = 30
     trial_start_at: str = ""
     referral_reward_bytes: int = 104857600

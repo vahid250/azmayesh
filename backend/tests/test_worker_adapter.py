@@ -17,6 +17,9 @@ def test_worker_settings_are_request_scoped_and_read_cloudflare_values():
         API_KEY="worker-test-key",
         TELEGRAM_INIT_DATA_MAX_AGE_SECONDS="3600",
         ENCRYPTION_KEY="worker-test-encryption-key",
+        RMA_SERVICE_MODE="paused",
+        RMA_TRIAL_DURATION_DAYS="20",
+        RMA_REFERRAL_REWARD_BYTES="104857600",
     )
     previous_app_env = settings.app_env
     token = activate_worker_settings(env)
@@ -26,6 +29,9 @@ def test_worker_settings_are_request_scoped_and_read_cloudflare_values():
         assert get_settings().api_key == "worker-test-key"
         assert get_settings().telegram_init_data_max_age_seconds == 3600
         assert get_settings().encryption_key == "worker-test-encryption-key"
+        assert get_settings().service_mode == "paused"
+        assert get_settings().trial_duration_days == 20
+        assert get_settings().referral_reward_bytes == 104857600
     finally:
         reset_worker_settings(token)
     assert settings.app_env == previous_app_env

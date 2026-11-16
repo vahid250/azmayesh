@@ -72,6 +72,17 @@
     listWireGuardConfigs: function () {
       return request("/v1/wireguard/configs");
     },
+    createOrder: function (planCode, idempotencyKey, termsVersion, paymentMethod) {
+      return request("/v1/orders", {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: {
+          plan_code: planCode,
+          payment_method: paymentMethod || "crypto",
+          terms_version: termsVersion
+        }
+      });
+    },
     createWireGuardConfig: function (clientName) {
       return request("/v1/wireguard/configs", {
         method: "POST",

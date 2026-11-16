@@ -30,7 +30,7 @@ def test_initial_migration_is_registered_and_has_expected_tables():
     assert '"entitlements"' in source
     assert '"usage_records"' in source
     assert "payment_method" in payment_method_migration
-    assert \"order_terms_acceptances\" in terms_migration
+    assert '"order_terms_acceptances"' in terms_migration
     assert "terms_version" in terms_migration
     assert "ondelete=" + chr(34) + "RESTRICT" + chr(34) in source
 

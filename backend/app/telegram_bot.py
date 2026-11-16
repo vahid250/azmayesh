@@ -49,10 +49,12 @@ async def send_telegram_message(chat_id: int, reply: dict) -> None:
             )
             response.raise_for_status()
             result = response.json()
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="Telegram message delivery failed") from exc
+    except (httpx.HTTPError, ValueError):
+        # Suppress the exception context: HTTP client errors can include the
+        # request URL, which contains the bot token.
+        raise HTTPException(status_code=502, detail="Telegram message delivery failed") from None
 
-    if not result.get("ok"):
+    if not isinstance(result, dict) or not result.get("ok"):
         raise HTTPException(status_code=502, detail="Telegram message delivery failed")
 
 

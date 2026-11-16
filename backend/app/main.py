@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -10,7 +10,8 @@ from app.config import get_settings
 from app.database import Base, engine, get_db
 from app.models import Entitlement, Order, Plan, WireGuardClient, WireGuardClientOwner
 from app.security import decrypt_secret, require_authenticated_request
-from app.billing import active_entitlement_for_user, create_order as create_order_record
+from app.billing import active_entitlement_for_user, create_order as create_order_record, record_verified_usage
+from app.metering import METERING_PATH, verify_metering_signature
 from app.wireguard import (
     _validate_real_server,
     get_wireguard_peer_status,
@@ -40,6 +41,11 @@ class WireGuardRequest(BaseModel):
 
 class OrderRequest(BaseModel):
     plan_code: str = Field(min_length=1, max_length=40)
+
+
+class UsageReportRequest(BaseModel):
+    entitlement_id: int = Field(gt=0)
+    bytes_used: int = Field(gt=0, le=10**12)
 
 
 def order_payload(order: Order) -> dict:
@@ -103,6 +109,45 @@ def database_diagnostic(
         "read_only": True,
     }
 
+
+
+
+@app.post(METERING_PATH)
+async def ingest_trusted_usage(
+    request: Request,
+    x_rma_timestamp: str = Header(..., alias="X-RMA-Timestamp"),
+    x_rma_event_id: str = Header(..., alias="X-RMA-Event-Id"),
+    x_rma_signature: str = Header(..., alias="X-RMA-Signature"),
+    db: Session = Depends(get_db),
+):
+    raw_body = await request.body()
+    if len(raw_body) > 4096:
+        raise HTTPException(status_code=413, detail="Metering report is too large")
+    verify_metering_signature(
+        secret=get_settings().metering_shared_secret,
+        timestamp=x_rma_timestamp,
+        event_id=x_rma_event_id,
+        signature=x_rma_signature,
+        body=raw_body,
+    )
+    try:
+        report = UsageReportRequest.model_validate_json(raw_body)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid metering report payload") from None
+
+    entitlement = record_verified_usage(
+        db,
+        entitlement_id=report.entitlement_id,
+        source="wireguard-meter",
+        source_event_id=x_rma_event_id,
+        bytes_used=report.bytes_used,
+    )
+    return {
+        "accepted": True,
+        "entitlement_id": entitlement.id,
+        "consumed_bytes": entitlement.consumed_bytes,
+        "remaining_bytes": max(0, entitlement.quota_bytes - entitlement.consumed_bytes),
+    }
 
 
 @app.get("/api/v1/plans")

@@ -52,21 +52,21 @@ The signature is:
 
 `hex(HMAC-SHA256(shared_secret, canonical_message))`
 
-The host registry endpoint uses the same headers and canonical format with method `POST`, path `/api/v1/internal/metering/peers`, a fresh `registry-...` event ID, and request body `{"interface":"wg0"}` (with the actual configured interface name). Its response is delivered over HTTPS and contains only currently authorized public peer metadata; no private keys are returned.
+The host registry endpoint uses the same headers and canonical format with method `POST`, path `/api/v1/internal/metering/peers`, a fresh `registry-...` event ID, and request body `{"interface":"wg0"}` (with the actual configured interface name). Its response is delivered over HTTPS and contains pending/registered peers plus removal instructions for revoked, expired, exhausted, or suspended peers; no private keys are returned. The host acknowledges registration/removal using the signed `POST /api/v1/internal/metering/peer-status` endpoint.
 
 Requests outside a five-minute clock window are rejected. The request body is limited to 4 KiB. The event ID is unique in the usage ledger. `bytes_used` must be the positive byte delta for that interval, not a cumulative counter. Retries must reuse the same event ID and exact body.
 
 ## Host-side WireGuard agent (experimental)
 
-A host-side agent now exists under `backend/host_agent/`. It samples `wg show <interface> dump`, computes RX+TX byte deltas, stores counters and pending reports in a durable SQLite outbox, signs requests using the backend's HMAC format, retries with the same event ID/body, and removes a peer using `wg set <interface> peer <public-key> remove` on permanent authentication, validation, entitlement, or quota rejection. It also removes the peer after the configured bounded outage window (default 120 seconds) if no usage report is accepted or WireGuard counters cannot be sampled.
+A host-side agent now exists under `backend/host_agent/`. It runs only on the actual VPN host, receives authorized peer instructions from the backend, registers/removes peers using `wg set`, samples `wg show <interface> dump`, computes RX+TX byte deltas, stores counters and pending reports in a durable SQLite outbox, signs requests using the backend's HMAC format, and retries with the same event ID/body. It removes peers after authoritative revocation/expiry/quota instructions and after the configured bounded metering outage window (default 120 seconds).
 
-The agent now obtains its peer registry from the signed backend endpoint `POST /api/v1/internal/metering/peers`. The backend returns only registered peers whose entitlement is active, unexpired, and has remaining quota. The agent reconciles its previously managed peers with this list and removes peers that are no longer authorized. The systemd unit and environment example are templates only. The service has not been installed on a VPN host, and no shared secret has been generated or configured.
+The agent obtains its peer registry from the HMAC-authenticated backend endpoint `POST /api/v1/internal/metering/peers`. The backend returns peers awaiting registration or already registered, plus explicit removal instructions. The agent acknowledges successful registration and revocation/suspension through the signed peer-status endpoint. The API may run on Cloudflare or another backend host; only the isolated VPN host agent receives `CAP_NET_ADMIN`. The systemd unit and environment example are templates only. The service has not been installed on a VPN host, and no shared secret has been generated or configured.
 
 The agent is interval-based, not kernel-level byte-perfect shaping. A peer can transfer additional bytes between a sample and removal. The backend rejects an interval that exceeds remaining quota rather than accepting a partial interval, so the final interval may be under-recorded. Transient API/network failures are retried with a durable outbox, then fail closed by removing the peer after the configured outage window. If peer removal fails, the agent logs a critical error; monitoring and operator response are required.
 
 ## Important operational limit
 
-The host agent is implemented and locally testable, but live quota enforcement remains unverified until the agent is installed on the actual VPN host, the backend and agent are configured for the same interface, permissions are reviewed, and exhaustion is tested against a dedicated test peer. It must not be treated as production-ready yet.
+The host agent is implemented and locally testable, but live quota enforcement remains unverified until the agent is installed on the actual VPN host, the API and agent are configured for the same interface, permissions are reviewed, and exhaustion is tested against a dedicated test peer. It must not be treated as production-ready yet.
 
 ## Not production-ready
 

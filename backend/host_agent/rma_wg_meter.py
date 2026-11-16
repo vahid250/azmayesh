@@ -35,7 +35,7 @@ def parse_wg_dump(output: str) -> dict[str, Counters]:
     """Parse wg show IFACE dump output; skip the interface header row."""
     peers = {}
     for line in output.splitlines()[1:]:
-        fields = line.split("\\t")
+        fields = line.split("\t")
         if len(fields) < 8:
             continue
         key = fields[0]
@@ -54,7 +54,7 @@ def sign_request(secret: str, timestamp: str, event_id: str, body: bytes) -> str
     if len(secret) < 32:
         raise ValueError("shared secret must contain at least 32 characters")
     digest = hashlib.sha256(body).hexdigest()
-    canonical = "\\n".join(["POST", METERING_PATH, timestamp, event_id, digest])
+    canonical = "\n".join(["POST", METERING_PATH, timestamp, event_id, digest])
     return hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()
 
 def load_peers(path: str) -> dict[str, Peer]:

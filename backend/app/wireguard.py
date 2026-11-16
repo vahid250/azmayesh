@@ -76,7 +76,7 @@ def _validate_real_server() -> None:
         raise HTTPException(status_code=503, detail="Configured WireGuard interface is not available") from exc
 
 
-def issue_wireguard_config(db: Session, client_name: str, owner_id: str) -> dict:
+def issue_wireguard_config(db: Session, client_name: str, owner_id: str, entitlement_id: int | None = None) -> dict:
     _validate_real_server()
     clean_name = " ".join(client_name.strip().split())[:64]
     if not clean_name:
@@ -116,7 +116,7 @@ def issue_wireguard_config(db: Session, client_name: str, owner_id: str) -> dict
         db.add(row)
         try:
             db.flush()
-            db.add(WireGuardClientOwner(client_id=row.id, telegram_user_id=owner_id))
+            db.add(WireGuardClientOwner(client_id=row.id, telegram_user_id=owner_id, entitlement_id=entitlement_id))
             db.commit()
             db.refresh(row)
             break

@@ -19,7 +19,7 @@ def test_initial_migration_is_registered_and_has_expected_tables():
     revision = scripts.get_revision("head")
 
     assert revision is not None
-    assert revision.revision == "0002_billing_ledger"
+    assert revision.revision == "0003_order_payment_method"
     source = Path(revision.path).read_text(encoding="utf-8")
     initial = Path(scripts.get_revision("0001_initial").path).read_text(encoding="utf-8")
     assert '"wireguard_clients"' in initial
@@ -27,6 +27,8 @@ def test_initial_migration_is_registered_and_has_expected_tables():
     assert '"orders"' in source
     assert '"entitlements"' in source
     assert '"usage_records"' in source
+    payment_method_migration = Path(revision.path).read_text(encoding="utf-8")
+    assert "payment_method" in payment_method_migration
     assert "ondelete=" + chr(34) + "RESTRICT" + chr(34) in source
 
 
@@ -52,6 +54,8 @@ def test_initial_migration_executes_against_empty_sqlite_database(tmp_path, monk
         }
         columns = {column["name"] for column in inspector.get_columns("wireguard_clients")}
         assert {"private_key_encrypted", "config_encrypted", "created_at"} <= columns
+        order_columns = {column["name"] for column in inspector.get_columns("orders")}
+        assert "payment_method" in order_columns
     finally:
         engine.dispose()
 

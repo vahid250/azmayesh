@@ -213,3 +213,5 @@ def test_expired_entitlement_rejects_usage(db):
             bytes_used=1,
         )
     assert exc.value.status_code == 409
+    db.refresh(entitlement)
+    assert entitlement.status == "expired"

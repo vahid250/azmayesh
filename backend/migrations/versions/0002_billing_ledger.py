@@ -90,11 +90,11 @@ def upgrade() -> None:
         sa.CheckConstraint("bytes_used > 0", name="ck_usage_bytes_positive"),
     )
     op.create_index("ix_usage_records_entitlement_id", "usage_records", ["entitlement_id"])
-    op.create_index("ix_wireguard_client_owners_entitlement_id", "wireguard_client_owners", ["entitlement_id"])
     op.add_column(
         "wireguard_client_owners",
         sa.Column("entitlement_id", sa.Integer(), nullable=True),
     )
+    op.create_index("ix_wireguard_client_owners_entitlement_id", "wireguard_client_owners", ["entitlement_id"])
     op.create_foreign_key(
         "fk_wireguard_owner_entitlement",
         "wireguard_client_owners",

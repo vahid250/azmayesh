@@ -56,7 +56,7 @@ Requests outside a five-minute clock window are rejected. The request body is li
 
 ## Host-side WireGuard agent (experimental)
 
-A host-side agent now exists under `backend/host_agent/`. It samples `wg show <interface> dump`, computes RX+TX byte deltas, stores counters and pending reports in a durable SQLite outbox, signs requests using the backend's HMAC format, retries with the same event ID/body, and removes a peer using `wg set <interface> peer <public-key> remove` on permanent authentication, validation, entitlement, or quota rejection. It also removes the peer after the configured bounded outage window (default 120 seconds) if no usage report is accepted.
+A host-side agent now exists under `backend/host_agent/`. It samples `wg show <interface> dump`, computes RX+TX byte deltas, stores counters and pending reports in a durable SQLite outbox, signs requests using the backend's HMAC format, retries with the same event ID/body, and removes a peer using `wg set <interface> peer <public-key> remove` on permanent authentication, validation, entitlement, or quota rejection. It also removes the peer after the configured bounded outage window (default 120 seconds) if no usage report is accepted or WireGuard counters cannot be sampled.
 
 The agent requires a trusted registry mapping each backend `client_id` to the peer public key. This registry must be kept in sync by the trusted provisioning workflow; it is not populated automatically yet. The systemd unit and environment example are templates only. The service has not been installed on a VPN host, and no shared secret has been generated or configured.
 

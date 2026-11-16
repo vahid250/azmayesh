@@ -12,6 +12,12 @@
 - Usage reports are accepted only from a server-to-server HMAC-signed request. Browser/client-reported byte counters are not trusted.
 - Usage event IDs are idempotent. Replayed reports do not debit quota twice.
 
+## Current payment availability policy
+
+- Access to the bot, account, and VPN service is not geo-blocked for users connecting from Iran. The product must not disable Telegram access or VPN access based on the user's country as a workaround for payment availability.
+- Rial payment orders are rejected server-side with the message «درگاه پرداخت ریالی به‌زودی فعال خواهد شد.»; hiding or disabling a button in the Mini App is not the security boundary.
+- Crypto is the only payment method accepted as an order intent in the current API. This does **not** mean a crypto gateway is live: no wallet address, payment processor, confirmation webhook, or settlement adapter is configured. The dashboard must clearly show that crypto checkout is pending integration and must not accept or confirm funds until the real provider has been selected and verified.
+
 ## Payment integration is not enabled
 
 No payment provider, fiat rail, crypto network, custody model, or jurisdictional payment route is selected here. The API must not treat a client screenshot, redirect, transaction hash, or user-submitted status as payment proof.

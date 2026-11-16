@@ -23,6 +23,7 @@ from urllib.parse import urlsplit
 
 METERING_PATH = "/api/v1/internal/metering/usage"
 REGISTRY_PATH = "/api/v1/internal/metering/peers"
+PEER_ACK_PATH = "/api/v1/internal/metering/peer-status"
 LOG = logging.getLogger("rma-wg-meter")
 
 
@@ -31,6 +32,7 @@ class Peer:
     client_id: int
     public_key: str
     allowed_ips: str = ""
+    state: str = "peer_registered"
 
 
 @dataclass(frozen=True)
@@ -222,6 +224,12 @@ class MeteringStore:
         ).fetchall()
         return {key: Peer(client_id, key, allowed_ips) for key, client_id, allowed_ips in rows}
 
+    def managed_peer(self, key):
+        row = self.db.execute(
+            "SELECT client_id,allowed_ips FROM managed_peers WHERE public_key=?", (key,)
+        ).fetchone()
+        return Peer(row[0], key, row[1]) if row else None
+
     def note_failure(self, name: str, now: float) -> float:
         key = f"{name}_fail_since"
         with self.db:
@@ -318,42 +326,74 @@ class WireGuardMeter:
         payload = self.registry_fetcher(self.registry_url, headers, body)
         if not isinstance(payload, dict) or payload.get("interface") != self.interface:
             raise ValueError("trusted registry response has the wrong interface")
-        items = payload.get("peers")
-        if not isinstance(items, list) or len(items) > 2000:
-            raise ValueError("trusted registry response has an invalid peer list")
-        peers = {}
+        items, removals = payload.get("peers"), payload.get("remove_peers")
+        if not isinstance(items, list) or not isinstance(removals, list) or len(items) + len(removals) > 2000:
+            raise ValueError("trusted registry response has invalid peer lists")
+        peers, remove_peers = {}, {}
         for item in items:
             if not isinstance(item, dict):
                 raise ValueError("trusted registry contains an invalid peer")
             client_id, key, allowed_ips = item.get("client_id"), item.get("public_key"), item.get("allowed_ips")
+            state = item.get("state", "peer_registered")
             if type(client_id) is not int or client_id <= 0:
                 raise ValueError("trusted registry client_id is invalid")
             if not isinstance(key, str) or not key.strip() or len(key) > 128:
                 raise ValueError("trusted registry public_key is invalid")
             if not isinstance(allowed_ips, str) or len(allowed_ips) > 128:
                 raise ValueError("trusted registry allowed_ips is invalid")
+            if state not in ("pending_peer_registration", "peer_registered"):
+                raise ValueError("trusted registry peer state is invalid")
             try:
                 ipaddress.ip_interface(allowed_ips)
             except ValueError:
                 raise ValueError("trusted registry allowed_ips is invalid") from None
             if key in peers:
                 raise ValueError("trusted registry contains duplicate public keys")
-            peers[key] = Peer(client_id, key, allowed_ips)
-        return peers
+            peers[key] = Peer(client_id, key, allowed_ips, state)
+        for item in removals:
+            if not isinstance(item, dict):
+                raise ValueError("trusted removal registry contains an invalid peer")
+            client_id, key, state = item.get("client_id"), item.get("public_key"), item.get("state")
+            if type(client_id) is not int or client_id <= 0 or not isinstance(key, str) or not key.strip() or len(key) > 128:
+                raise ValueError("trusted removal registry peer identity is invalid")
+            if state not in ("revoked", "suspended") or key in remove_peers or key in peers:
+                raise ValueError("trusted removal registry peer state is invalid")
+            remove_peers[key] = Peer(client_id, key, "", state)
+        return peers, remove_peers
+
+    def _ack_peer_status(self, peer, state):
+        body = json.dumps(
+            {"client_id": peer.client_id, "public_key": peer.public_key, "state": state},
+            separators=(",", ":"), sort_keys=True,
+        ).encode()
+        headers = self._signed_headers(self.secret, PEER_ACK_PATH, body)
+        status = self.post(self.api_base_url + PEER_ACK_PATH, headers, body)
+        if not 200 <= status < 300:
+            LOG.error("backend did not acknowledge peer %s state=%s (HTTP %s)", peer.client_id, state, status)
+            return False
+        return True
 
     def sync_registry(self):
         if self.registry_fetcher is None:
             return self.peers
-        active = self._fetch_registry()
+        active, removals = self._fetch_registry()
+        previously_managed = self.store.current_peers()
         stale_keys = self.store.replace_registry(active)
+        removal_map = dict(removals)
         for key in stale_keys:
-            if self.store.disabled(key):
-                self.store.unmanage(key)
-                continue
+            if key not in removal_map:
+                old_peer = previously_managed.get(key)
+                if old_peer is not None:
+                    removal_map[key] = Peer(old_peer.client_id, key, "", "suspended")
+        for key, peer in removal_map.items():
             try:
-                self._remove_peer(key)
+                if not self.store.disabled(key):
+                    self._remove_peer(key)
+                else:
+                    self.store.unmanage(key)
+                self._ack_peer_status(peer, peer.state)
             except Exception as exc:
-                LOG.critical("stale managed peer removal failed for %s (%s)", key[:10], type(exc).__name__)
+                LOG.critical("managed peer removal/ack failed for client %s (%s)", peer.client_id, type(exc).__name__)
         for key in active:
             self.store.enable(key)
         self.peers = active
@@ -416,6 +456,9 @@ class WireGuardMeter:
                     continue
             if current is None:
                 continue
+            if peer.state == "pending_peer_registration":
+                if not self._ack_peer_status(peer, "peer_registered"):
+                    continue
             pending = self.store.pending(key)
             if pending is None:
                 pending = self.store.prepare_delta(peer, current.total)
@@ -434,11 +477,13 @@ class WireGuardMeter:
                 continue
             if 200 <= status < 300:
                 self.store.acknowledge(key, pending.event_id)
-            elif status in (401, 403, 404, 409, 410, 413, 422):
+            elif status in (401, 403, 404, 410):
                 try:
                     self._remove_peer(key)
                 except Exception as exc:
                     LOG.critical("peer enforcement failed for %s (%s); operator action required", key[:10], type(exc).__name__)
+            elif status == 409:
+                LOG.warning("backend rejected usage for client %s; awaiting authoritative registry removal", peer.client_id)
             elif time.time() - pending.created_at >= self.max_outage_seconds:
                 try:
                     self._remove_peer(key)

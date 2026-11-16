@@ -12,11 +12,11 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 
 ## Operating assumptions and limitations
 1. Start the agent before enabling customer peers. The first sample is charged from zero.
-2. Run exactly one agent per WireGuard interface. The backend and agent must refer to the same host/interface in the current lab topology.
+2. Run exactly one agent per WireGuard interface. The API's WG_INTERFACE and the agent's RMA_WG_INTERFACE must identify the same interface.
 3. Polling is interval-based, not kernel-level byte-perfect shaping. Traffic can continue between a sample and peer removal.
 4. If counters decrease after an interface/host restart, the new counter value is counted as a fresh delta.
 5. Only peers in the signed backend registry are managed and metered.
-6. The backend currently rejects a report that exceeds remaining quota rather than accepting a partial interval. The last interval can therefore be under-recorded; the peer is still removed.
+6. The backend currently rejects a report that exceeds remaining quota and marks the entitlement exhausted; the final interval can be under-recorded. The last interval can therefore be under-recorded; the peer is still removed.
 7. If wg peer removal fails, a critical error is logged and operator intervention is required. No successful suspension is claimed.
 
 ## Automatic peer registry

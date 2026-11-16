@@ -90,25 +90,25 @@ def upgrade() -> None:
         sa.CheckConstraint("bytes_used > 0", name="ck_usage_bytes_positive"),
     )
     op.create_index("ix_usage_records_entitlement_id", "usage_records", ["entitlement_id"])
-    op.add_column(
-        "wireguard_client_owners",
-        sa.Column("entitlement_id", sa.Integer(), nullable=True),
-    )
-    op.create_index("ix_wireguard_client_owners_entitlement_id", "wireguard_client_owners", ["entitlement_id"])
-    op.create_foreign_key(
-        "fk_wireguard_owner_entitlement",
-        "wireguard_client_owners",
-        "entitlements",
-        ["entitlement_id"],
-        ["id"],
-        ondelete="RESTRICT",
-    )
+    # Batch mode keeps this migration executable on SQLite test databases
+    # while producing a normal ALTER TABLE on PostgreSQL.
+    with op.batch_alter_table("wireguard_client_owners") as batch_op:
+        batch_op.add_column(sa.Column("entitlement_id", sa.Integer(), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_wireguard_owner_entitlement",
+            "entitlements",
+            ["entitlement_id"],
+            ["id"],
+            ondelete="RESTRICT",
+        )
+        batch_op.create_index("ix_wireguard_client_owners_entitlement_id", ["entitlement_id"])
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_wireguard_owner_entitlement", "wireguard_client_owners", type_="foreignkey")
-    op.drop_index("ix_wireguard_client_owners_entitlement_id", table_name="wireguard_client_owners")
-    op.drop_column("wireguard_client_owners", "entitlement_id")
+    with op.batch_alter_table("wireguard_client_owners") as batch_op:
+        batch_op.drop_index("ix_wireguard_client_owners_entitlement_id")
+        batch_op.drop_constraint("fk_wireguard_owner_entitlement", type_="foreignkey")
+        batch_op.drop_column("entitlement_id")
     op.drop_index("ix_usage_records_entitlement_id", table_name="usage_records")
     op.drop_table("usage_records")
     op.drop_index("ix_entitlements_telegram_user_id", table_name="entitlements")

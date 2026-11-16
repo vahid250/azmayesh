@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -164,7 +165,7 @@ def list_user_entitlements(
         .order_by(Entitlement.expires_at.desc(), Entitlement.id.desc())
         .limit(100)
     ).scalars().all()
-    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    now = datetime.now(timezone.utc)
     return [
         {
             "id": item.id,

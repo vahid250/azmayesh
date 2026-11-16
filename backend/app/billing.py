@@ -178,6 +178,15 @@ def record_verified_usage(
         entitlement = db.get(Entitlement, entitlement_id)
         if entitlement is None:
             raise HTTPException(status_code=404, detail="Entitlement not found")
+        # Make an over-quota interval terminal for the whole entitlement. The
+        # host agent will then remove every peer when it refreshes the registry.
+        if entitlement.status == "active":
+            if entitlement.expires_at <= now:
+                entitlement.status = "expired"
+                db.commit()
+            elif entitlement.consumed_bytes + bytes_used > entitlement.quota_bytes:
+                entitlement.status = "exhausted"
+                db.commit()
         raise HTTPException(status_code=409, detail="Entitlement expired, inactive, or quota exceeded")
 
     db.add(UsageRecord(

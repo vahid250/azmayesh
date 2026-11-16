@@ -8,7 +8,7 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 - The peer registry maps WireGuard public keys to backend client IDs. It contains no private keys and must be maintained by the trusted provisioning workflow.
 - Run under a dedicated OS account with narrowly scoped permission to read counters and remove peers. Protect the registry and SQLite state from untrusted writes.
 - SQLite keeps a durable outbox. Retries reuse the exact body and event ID; a baseline is not advanced while a report is pending.
-- Permanent HTTP errors cause peer removal. Transient HTTP errors and network errors retain the pending report for bounded retry; the peer is removed if no report is accepted before the outage window expires.
+- Permanent HTTP errors cause peer removal. Transient HTTP errors and network errors retain the pending report for bounded retry; the peer is removed if no report is accepted, or the WireGuard counters cannot be sampled, before the outage window expires.
 
 ## Operating assumptions and limitations
 1. Start the agent before enabling customer peers. The first sample is charged from zero.

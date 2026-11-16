@@ -52,7 +52,7 @@ if (!html.includes("disableUnimplementedTelegramCommands") || !html.includes('ur
 if (!html.includes('const webFallbackUrl = "https://t.me/RMA_Connect_Bot";')) {
   throw new Error("Quick launch must use the plain bot URL.");
 }
-if (!termsClient.includes("privacy_document_path") || !html.includes("این فرم هنوز به سامانه پشتیبانی متصل نشده است")) {
+if (!termsClient.includes("privacy_document_path") || !termsClient.includes("مطالعه سیاست حریم خصوصی و داده‌ها") || !html.includes("فرم ارسال نظر هنوز به سامانه پشتیبانی متصل نشده است")) {
   throw new Error("Privacy disclosure link or honest feedback status is missing.");
 }
 if (!termsClient.includes("draft_testing_only") || !termsClient.includes("تا فعال‌شدن سفارش ذخیره نمی‌شود") || !apiClient.includes("createOrder: function") || !apiClient.includes("terms_version: termsVersion")) {
@@ -83,7 +83,10 @@ const forbiddenDemoClaims = [
   "پینگ فوق‌پایین",
   "Reality • Anti-DPI TLS",
   "صدور بدون وقفه کانفیگ اختصاصی",
-  "3 Online"
+  "3 Online",
+  "هر ۲۴ ساعت یک شانس چرخش ۱۰۰٪ رایگان دارید",
+  "کانفیگ نو صادر می‌شود و قبلی باطل می‌گردد",
+  "پیام و دیدگاه شما با موفقیت به سیستم پشتیبانی تلگرام ارسال شد"
 ];
 for (const claim of forbiddenDemoClaims) {
   if (html.includes(claim)) throw new Error("Unverified dashboard claim remains: " + claim);

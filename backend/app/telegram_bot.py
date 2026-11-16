@@ -66,11 +66,21 @@ async def telegram_webhook(
     if not expected or not supplied or not hmac.compare_digest(expected, supplied):
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
-    raw_body = await request.body()
-    if len(raw_body) > 65536:
-        raise HTTPException(status_code=413, detail="Telegram update is too large")
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > 65536:
+                raise HTTPException(status_code=413, detail="Telegram update is too large")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid Telegram update payload") from None
+
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > 65536:
+            raise HTTPException(status_code=413, detail="Telegram update is too large")
     try:
-        update = json.loads(raw_body)
+        update = json.loads(bytes(body))
     except (json.JSONDecodeError, UnicodeDecodeError):
         raise HTTPException(status_code=400, detail="Invalid Telegram update payload") from None
     if not isinstance(update, dict):

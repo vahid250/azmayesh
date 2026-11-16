@@ -41,13 +41,15 @@ Install Python 3 and wireguard-tools. Copy the host_agent directory to /opt/rma/
 
 Create /etc/rma/metering.env with mode 0600. Populate it from metering.env.example using the same secret as the API. Do not put the secret in shell history or source control.
 
-Install the systemd unit at /etc/systemd/system/rma-wg-meter.service. Review the interface dependency in the unit if the interface is not wg0. The service grants CAP_NET_ADMIN to the dedicated agent only; do not run the agent as root.
+Install both systemd units at /etc/systemd/system/rma-wg-meter.service and /etc/systemd/system/rma-wg-meter-check.service. Review the interface dependency in both units if the interface is not wg0. Both units grant CAP_NET_ADMIN to the dedicated account only; do not run the agent as root.
 
 ## 4. Read-only preflight
 
 Before enabling the service, run:
 
-    sudo systemd-run --wait --pipe --collect --property=User=rma-meter --property=EnvironmentFile=/etc/rma/metering.env --property=CapabilityBoundingSet=CAP_NET_ADMIN --property=AmbientCapabilities=CAP_NET_ADMIN /usr/bin/python3 /opt/rma/host_agent/rma_wg_meter.py --check
+    sudo systemctl daemon-reload
+    sudo systemctl start rma-wg-meter-check
+    sudo journalctl -u rma-wg-meter-check -n 30 --no-pager
 
 Expected output is JSON with:
 - api_registry_authenticated=true
@@ -57,7 +59,7 @@ Expected output is JSON with:
 - no_peer_changes=true
 - no_usage_submission=true
 
-The check command does not add or remove peers and does not submit usage. It may initialize the local SQLite state file. The transient systemd unit supplies the same limited network capability and protected environment-file loading as the service.
+The check command does not add or remove peers and does not submit usage. It may initialize the local SQLite state file. The one-shot preflight unit uses the same protected environment file and limited network capability as the long-running service.
 
 If the API cannot be reached, the signature is rejected, the interface differs, or WireGuard counters cannot be read, stop here and correct the configuration.
 

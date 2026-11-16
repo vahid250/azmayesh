@@ -160,3 +160,50 @@ def test_extended_wireguard_sampling_failure_removes_managed_peers(tmp_path):
     assert store.disabled(PUB)
     assert any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
     store.close()
+
+
+def test_signed_registry_adds_authorized_peer_and_removes_stale_peer(tmp_path):
+    from host_agent.rma_wg_meter import REGISTRY_PATH
+
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG(10, 5)
+    responses = [
+        {"interface": "wg0", "peers": [{
+            "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32"
+        }]},
+        {"interface": "wg0", "peers": []},
+    ]
+    registry_requests = []
+    sent_usage = []
+
+    def registry_fetcher(url, headers, body):
+        registry_requests.append((url, headers, body))
+        return responses.pop(0)
+
+    def post(url, headers, body):
+        sent_usage.append((url, headers, body))
+        return 200
+
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET,
+        interface="wg0", peers={}, store=store, command=wg, post=post,
+        registry_fetcher=registry_fetcher,
+    )
+    meter.run_once()
+    assert len(registry_requests) == 1
+    url, headers, body = registry_requests[0]
+    assert url.endswith(REGISTRY_PATH)
+    assert body == b'{"interface":"wg0"}'
+    expected = sign_request(
+        SECRET, headers["X-RMA-Timestamp"], headers["X-RMA-Event-Id"],
+        body, path=REGISTRY_PATH,
+    )
+    assert headers["X-RMA-Signature"] == expected
+    assert store.current_peers()[PUB].client_id == 7
+    assert len(sent_usage) == 1
+
+    meter.run_once()
+    assert store.current_peers() == {}
+    assert store.disabled(PUB)
+    assert any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
+    store.close()

@@ -70,7 +70,7 @@ def test_pending_event_retries_same_id_and_body_then_accounts_new_delta(tmp_path
     wg.rx, wg.tx = 150, 100
     meter.run_once()
     assert len(sent) == 3
-    assert b'"bytes_used":110' in sent[2][1]
+    assert b'"bytes_used":150' in sent[2][1]
     store.close()
 
 

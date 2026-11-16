@@ -84,7 +84,7 @@ def test_pending_event_retries_same_id_and_body_then_accounts_new_delta(tmp_path
     store.close()
 
 
-def test_quota_rejection_waits_for_authoritative_registry_then_removes_peer(tmp_path):
+def test_quota_exhaustion_is_reconciled_by_registry_then_removes_peer(tmp_path):
     from host_agent.rma_wg_meter import METERING_PATH
 
     store = MeteringStore(str(tmp_path / "state.sqlite3"))
@@ -102,7 +102,7 @@ def test_quota_rejection_waits_for_authoritative_registry_then_removes_peer(tmp_
         return responses.pop(0)
 
     def post(url, headers, body):
-        return 409 if url.endswith(METERING_PATH) else 200
+        return 200
 
     meter = WireGuardMeter(
         api_base_url="https://api.example.test",

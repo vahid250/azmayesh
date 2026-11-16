@@ -52,7 +52,7 @@ def test_parse_wg_dump_and_signature_matches_backend_canonical_format():
 def test_pending_event_retries_same_id_and_body_then_accounts_new_delta(tmp_path):
     store = MeteringStore(str(tmp_path / "state.sqlite3"))
     wg = FakeWG(60, 40)
-    replies = [503, 200, 200]
+    replies = [503, 200, 200, 200]
     sent = []
 
     def post(url, headers, body):
@@ -73,11 +73,14 @@ def test_pending_event_retries_same_id_and_body_then_accounts_new_delta(tmp_path
     meter.run_once()
     assert sent[1] == sent[0]
     assert store.pending(PUB) is None
+    # The 100 bytes transferred while the first report was pending are
+    # emitted as a new event after the original event is acknowledged.
+    assert b'"bytes_used":100' in sent[2][1]
 
     wg.rx, wg.tx = 150, 100
     meter.run_once()
-    assert len(sent) == 3
-    assert b'"bytes_used":150' in sent[2][1]
+    assert len(sent) == 4
+    assert b'"bytes_used":50' in sent[3][1]
     store.close()
 
 

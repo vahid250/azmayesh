@@ -81,20 +81,40 @@ def test_pending_event_retries_same_id_and_body_then_accounts_new_delta(tmp_path
     store.close()
 
 
-def test_quota_rejection_removes_peer_and_marks_it_disabled(tmp_path):
+def test_quota_rejection_waits_for_authoritative_registry_then_removes_peer(tmp_path):
+    from host_agent.rma_wg_meter import METERING_PATH
+
     store = MeteringStore(str(tmp_path / "state.sqlite3"))
     wg = FakeWG(20, 10)
+    responses = [
+        {"interface": "wg0", "peers": [{
+            "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "peer_registered"
+        }], "remove_peers": []},
+        {"interface": "wg0", "peers": [], "remove_peers": [{
+            "client_id": 7, "public_key": PUB, "state": "suspended"
+        }]},
+    ]
+
+    def registry_fetcher(url, headers, body):
+        return responses.pop(0)
+
+    def post(url, headers, body):
+        return 409 if url.endswith(METERING_PATH) else 200
+
     meter = WireGuardMeter(
         api_base_url="https://api.example.test",
-        secret=SECRET, interface="wg0", peers={PUB: Peer(7, PUB)},
-        store=store, command=wg, post=lambda *_: 409,
+        secret=SECRET, interface="wg0", peers={},
+        store=store, command=wg, post=post, registry_fetcher=registry_fetcher,
     )
+    meter.run_once()
+    assert not store.disabled(PUB)
+    assert not any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
+
     meter.run_once()
     assert any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
     assert store.disabled(PUB)
     assert store.pending(PUB) is None
     store.close()
-
 
 def test_counter_reset_counts_new_value_and_does_not_create_negative_delta(tmp_path):
     store = MeteringStore(str(tmp_path / "state.sqlite3"))
@@ -142,7 +162,7 @@ def test_extended_metering_outage_removes_peer_after_grace_period(tmp_path):
     store.db.commit()
     meter.run_once()
     assert store.disabled(PUB)
-    assert store.pending(PUB) is None
+    assert store.pending(PUB) is not None
     assert any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
     store.close()
 

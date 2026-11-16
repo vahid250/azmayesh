@@ -51,6 +51,16 @@ if (html.includes("کارت‌به‌کارت شتابی هوشمند") || html.
 if (!html.includes('id="rmaOfficialContact"') || !html.includes("تنها مسیر ارتباطی تأییدشده")) {
   throw new Error("The dashboard must identify only the verified R&MA contact path.");
 }
+if (!html.includes('id="rmaRoadmapNotice"') || !html.includes("این بخش‌ها تا زمان پیاده‌سازی و آزمون واقعی پنهان شده‌اند")) {
+  throw new Error("The dashboard must disclose unimplemented roadmap features.");
+}
+for (const id of ["storyToEarnSection", "smartWalletSection", "familyAndResellerSection", "package2NetworkSuite", "smartAlertsSection", "instantLocationSwitcherSection", "smartRoutingSection", "refundSection", "setupGuideSection"]) {
+  const wrapper = new RegExp('class="[^"]*\\bhidden\\b[^"]*"\\s+id="' + id + '"');
+  if (!wrapper.test(html)) throw new Error("Unimplemented dashboard panel must stay hidden: " + id);
+}
+if (html.includes("botMaintenanceToggleBtn") || html.includes("ROLE: ADMIN")) {
+  throw new Error("Unprotected local-only admin controls must not be shown to users.");
+}
 if (html.includes("@RMA_WireGuard") || html.includes("youtube.com/@RMA_WireGuard") || html.includes("instagram.com/rma_wireguard")) {
   throw new Error("Unverified social accounts must not be presented as official project channels.");
 }

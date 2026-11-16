@@ -146,6 +146,12 @@ class MeteringStore:
         ).fetchone()
         return PendingEvent(row[0], row[1], key, row[2], bytes(row[3]), row[4]) if row else None
 
+    def pending_all(self):
+        rows = self.db.execute(
+            "SELECT event_id,client_id,public_key,bytes_used,body,created_at FROM pending_events ORDER BY created_at"
+        ).fetchall()
+        return [PendingEvent(row[0], row[1], row[2], row[3], bytes(row[4]), row[5]) for row in rows]
+
     def prepare_delta(self, peer, current_total):
         if current_total < 0:
             raise ValueError("counter total cannot be negative")
@@ -445,6 +451,25 @@ class WireGuardMeter:
                         LOG.critical("registry outage and peer removal failed for %s (%s)", key[:10], type(remove_exc).__name__)
             else:
                 LOG.error("trusted peer registry unavailable; bounded fail-closed timer started (%s)", type(exc).__name__)
+
+        # Retry all durable outbox events, including events for peers already
+        # removed during an outage or revocation. Never silently lose usage.
+        for pending_event in self.store.pending_all():
+            try:
+                status = self._send(pending_event)
+            except Exception as exc:
+                if time.time() - pending_event.created_at >= self.max_outage_seconds and not self.store.disabled(pending_event.public_key):
+                    try:
+                        self._remove_peer(pending_event.public_key)
+                    except Exception as remove_exc:
+                        LOG.critical("outbox outage and peer removal failed for %s (%s)", pending_event.public_key[:10], type(remove_exc).__name__)
+                else:
+                    LOG.warning("usage outbox retry remains pending for client %s (%s)", pending_event.client_id, type(exc).__name__)
+                continue
+            if 200 <= status < 300:
+                self.store.acknowledge(pending_event.public_key, pending_event.event_id)
+            elif status in (404, 409):
+                self.store.discard_pending(pending_event.public_key)
 
         try:
             counters = self.sample()

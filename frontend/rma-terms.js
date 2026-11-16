@@ -33,7 +33,7 @@
     checkbox.checked = false;
     checkbox.className = "mt-1 h-4 w-4 rounded border-outline accent-primary";
     const labelText = document.createElement("span");
-    labelText.textContent = "متن شرایط نسخه " + metadata.version + " را مطالعه کرده‌ام و برای ادامه آزمایش فنی می‌پذیرم.";
+    labelText.textContent = "این گزینه فقط پیش‌نمایش پذیرش است و تا فعال‌شدن سفارش ذخیره نمی‌شود؛ هنگام فعال‌سازی واقعی، نسخه جاری دوباره تأیید خواهد شد.";
     label.append(checkbox, labelText);
 
     const feedback = document.createElement("p");

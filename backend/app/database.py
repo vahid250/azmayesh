@@ -92,12 +92,16 @@ async def get_db(request: Request):
             ) from exc
         factory = _worker_session_factory(_hyperdrive_url(hyperdrive))
         await _worker_db_lock.acquire()
-        db = factory()
+        db = None
         try:
+            db = factory()
             yield db
         finally:
-            db.close()
-            _worker_db_lock.release()
+            try:
+                if db is not None:
+                    db.close()
+            finally:
+                _worker_db_lock.release()
         return
 
     db = SessionLocal()

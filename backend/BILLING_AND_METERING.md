@@ -33,12 +33,12 @@ Required headers:
 Body:
 
 ```json
-{"entitlement_id":123,"bytes_used":4096}
+{"client_id":123,"bytes_used":4096}
 ```
 
 The shared secret must contain at least 32 characters and must be set only in the backend secret store and on the trusted VPN metering host. Never put it in the Mini App, browser JavaScript, Telegram messages, or Git.
 
-The signed canonical message is the following UTF-8 text, with newline separators and no trailing newline:
+The API resolves the supplied WireGuard client to its owning entitlement; callers cannot choose an arbitrary entitlement ID. The signed canonical message is the following UTF-8 text, with newline separators and no trailing newline:
 
 ```text
 POST

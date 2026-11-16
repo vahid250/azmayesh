@@ -208,7 +208,7 @@ class WireGuardMeter:
             if 200 <= status < 300:
                 self.store.acknowledge(key,pending.event_id)
             elif status in (401,403,404,409,410,413,422):
-                # Unknown client, expired/inactive entitlement, or exhausted quota.
+                # Authentication/configuration failure, unknown client, or exhausted quota.
                 try:
                     self._remove_peer(key)
                 except Exception as exc:

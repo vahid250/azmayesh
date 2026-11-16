@@ -21,6 +21,6 @@ services:
       - key: DIRECT_DATABASE_URL
         sync: false
       - key: ENCRYPTION_KEY
+        generateValue: true
       - key: METERING_SHARED_SECRET
         sync: false
-        generateValue: true

@@ -278,7 +278,9 @@ def test_signed_peer_registry_only_returns_current_entitlements(monkeypatch):
             "client_id": peer_id,
             "public_key": "registry-test-public-key",
             "allowed_ips": "10.99.0.8/32",
+            "state": "peer_registered",
         }]
+        assert response.json()["remove_peers"] == []
 
         with TestingSession() as db:
             db.get(Entitlement, entitlement_id).status = "exhausted"
@@ -298,6 +300,11 @@ def test_signed_peer_registry_only_returns_current_entitlements(monkeypatch):
         excluded = client.post(METERING_REGISTRY_PATH, content=body, headers=second_headers)
         assert excluded.status_code == 200
         assert excluded.json()["peers"] == []
+        assert excluded.json()["remove_peers"] == [{
+            "client_id": peer_id,
+            "public_key": "registry-test-public-key",
+            "state": "suspended",
+        }]
     finally:
         app.dependency_overrides.clear()
         engine.dispose()

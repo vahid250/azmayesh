@@ -33,6 +33,33 @@ def test_mock_endpoint_marks_config_as_non_connectable_and_encrypts_storage(monk
     Base.metadata.create_all(test_engine)
     TestingSession = sessionmaker(bind=test_engine, autoflush=False, autocommit=False)
 
+    from datetime import datetime, timedelta, timezone
+    from app.models import Entitlement, Order
+    with TestingSession() as seed_db:
+        order = Order(
+            telegram_user_id="lab-local",
+            plan_code="test-plan",
+            idempotency_key="wireguard-test-key-0001",
+            amount_minor=100,
+            currency="TEST",
+            quota_bytes=10_000,
+            max_devices=2,
+            duration_days=30,
+            status="paid",
+        )
+        seed_db.add(order)
+        seed_db.flush()
+        seed_db.add(Entitlement(
+            order_id=order.id,
+            telegram_user_id="lab-local",
+            quota_bytes=10_000,
+            consumed_bytes=0,
+            max_devices=2,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+            status="active",
+        ))
+        seed_db.commit()
+
     def override_get_db():
         db = TestingSession()
         try:
@@ -111,6 +138,9 @@ def test_mock_endpoint_marks_config_as_non_connectable_and_encrypts_storage(monk
 
         with TestingSession() as db:
             stored = db.execute(select(WireGuardClient)).scalar_one()
+            from app.models import WireGuardClientOwner
+            stored_owner = db.get(WireGuardClientOwner, stored.id)
+            assert stored_owner.entitlement_id is not None
             assert "PrivateKey" not in stored.config_encrypted
             assert "=" not in stored.private_key_encrypted[:8]
             assert stored.state == "revoked"

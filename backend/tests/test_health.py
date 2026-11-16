@@ -135,6 +135,13 @@ def test_paused_service_announces_return_and_blocks_new_orders(monkeypatch):
         )
         assert order.status_code == 503
         assert "موقتاً متوقف" in order.json()["detail"]
+        config = TestClient(main.app).post(
+            "/api/v1/wireguard/configs",
+            headers={"X-Telegram-Init-Data": "test"},
+            json={"client_name": "paused-lab"},
+        )
+        assert config.status_code == 503
+        assert "موقتاً متوقف" in config.json()["detail"]
     finally:
         main.app.dependency_overrides.clear()
         main.app.dependency_overrides.update(original_overrides)

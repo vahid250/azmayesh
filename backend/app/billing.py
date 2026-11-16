@@ -181,7 +181,10 @@ def record_verified_usage(
         # Make an over-quota interval terminal for the whole entitlement. The
         # host agent will then remove every peer when it refreshes the registry.
         if entitlement.status == "active":
-            if entitlement.expires_at <= now:
+            expires_at = entitlement.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at <= now:
                 entitlement.status = "expired"
                 db.commit()
             elif entitlement.consumed_bytes + bytes_used > entitlement.quota_bytes:

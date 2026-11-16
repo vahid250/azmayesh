@@ -41,6 +41,14 @@ def test_valid_telegram_init_data_returns_user(monkeypatch):
     assert result["query_id"] == "AAE-unit-test"
 
 
+def test_oversized_telegram_init_data_is_rejected(monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", TOKEN)
+    with pytest.raises(HTTPException) as exc:
+        verify_telegram_init_data("a" * 16385)
+    assert exc.value.status_code == 401
+    assert "too large" in exc.value.detail.lower()
+
+
 def test_expired_telegram_init_data_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "telegram_bot_token", TOKEN)
     monkeypatch.setattr(settings, "telegram_init_data_max_age_seconds", 600)

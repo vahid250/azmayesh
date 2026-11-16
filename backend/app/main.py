@@ -41,6 +41,7 @@ class WireGuardRequest(BaseModel):
 
 class OrderRequest(BaseModel):
     plan_code: str = Field(min_length=1, max_length=40)
+    payment_method: str = Field(default="crypto", pattern="^(crypto|rial)$")
 
 
 class UsageReportRequest(BaseModel):
@@ -62,6 +63,7 @@ def order_payload(order: Order) -> dict:
     return {
         "id": order.id,
         "plan_code": order.plan_code,
+        "payment_method": order.payment_method,
         "amount_minor": order.amount_minor,
         "currency": order.currency,
         "quota_bytes": order.quota_bytes,
@@ -334,6 +336,7 @@ def create_user_order(
         owner_id_from_auth(auth),
         request.plan_code,
         idempotency_key,
+        request.payment_method,
     )
     return order_payload(order)
 

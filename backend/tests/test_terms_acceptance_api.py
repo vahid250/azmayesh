@@ -57,15 +57,12 @@ def test_order_api_requires_current_terms_version(client_and_db):
     assert db.execute(select(OrderTermsAcceptance)).scalars().all() == []
 
 
-def test_order_api_persists_authenticated_acceptance_with_order(client_and_db):
+def test_order_api_refuses_pending_orders_during_prelaunch(client_and_db):
     client, db = client_and_db
     response = _post_order(client, terms_version=main.CURRENT_TERMS_VERSION)
-    assert response.status_code == 200
-    payload = response.json()
-    acceptance = db.execute(select(OrderTermsAcceptance).where(OrderTermsAcceptance.order_id == payload["id"])).scalar_one()
-    assert acceptance.telegram_user_id == "24680"
-    assert acceptance.terms_version == main.CURRENT_TERMS_VERSION
-    assert acceptance.accepted_at is not None
+    assert response.status_code == 503
+    assert "هیچ سفارش یا وجهی دریافت نمی‌شود" in response.json()["detail"]
+    assert db.execute(select(OrderTermsAcceptance)).scalars().all() == []
 
 
 def test_public_terms_metadata_identifies_draft_and_canonical_document():
@@ -78,33 +75,8 @@ def test_public_terms_metadata_identifies_draft_and_canonical_document():
     assert payload["acceptance_enabled"] is True
     assert payload["legal_effect"] == "not_final_terms_or_a_payment_authorization"
 
-def test_order_api_idempotent_retry_keeps_single_acceptance(client_and_db):
+def test_order_api_does_not_persist_acceptance_when_order_creation_is_disabled(client_and_db):
     client, db = client_and_db
-    first = _post_order(client, terms_version=main.CURRENT_TERMS_VERSION)
-    assert first.status_code == 200
-
-    retry = _post_order(client, terms_version=main.CURRENT_TERMS_VERSION)
-    assert retry.status_code == 200
-    assert retry.json()["id"] == first.json()["id"]
-
-    acceptances = db.execute(
-        select(OrderTermsAcceptance).where(OrderTermsAcceptance.order_id == first.json()["id"])
-    ).scalars().all()
-    assert len(acceptances) == 1
-    assert acceptances[0].telegram_user_id == "24680"
-    assert acceptances[0].terms_version == main.CURRENT_TERMS_VERSION
-
-def test_order_api_idempotent_retry_rejects_missing_acceptance(client_and_db):
-    client, db = client_and_db
-    first = _post_order(client, terms_version=main.CURRENT_TERMS_VERSION)
-    assert first.status_code == 200
-
-    acceptance = db.execute(
-        select(OrderTermsAcceptance).where(OrderTermsAcceptance.order_id == first.json()["id"])
-    ).scalar_one()
-    db.delete(acceptance)
-    db.commit()
-
-    retry = _post_order(client, terms_version=main.CURRENT_TERMS_VERSION)
-    assert retry.status_code == 409
-    assert retry.json()["detail"] == "Terms acceptance is missing or does not match this order"
+    response = _post_order(client, terms_version=main.CURRENT_TERMS_VERSION)
+    assert response.status_code == 503
+    assert db.execute(select(OrderTermsAcceptance)).scalars().all() == []

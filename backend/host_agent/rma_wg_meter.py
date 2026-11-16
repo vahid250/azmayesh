@@ -204,12 +204,17 @@ class MeteringStore:
         old = {row[0] for row in self.db.execute("SELECT public_key FROM managed_peers")}
         new = set(peers)
         with self.db:
-            self.db.execute("DELETE FROM managed_peers")
             self.db.executemany(
-                "INSERT INTO managed_peers(public_key,client_id,allowed_ips) VALUES(?,?,?)",
+                """INSERT INTO managed_peers(public_key,client_id,allowed_ips) VALUES(?,?,?)
+                   ON CONFLICT(public_key) DO UPDATE SET
+                   client_id=excluded.client_id, allowed_ips=excluded.allowed_ips""",
                 [(p.public_key, p.client_id, p.allowed_ips) for p in peers.values()],
             )
         return sorted(old - new)
+
+    def unmanage(self, key):
+        with self.db:
+            self.db.execute("DELETE FROM managed_peers WHERE public_key=?", (key,))
 
     def current_peers(self) -> dict[str, Peer]:
         rows = self.db.execute(
@@ -250,7 +255,9 @@ class WireGuardMeter:
         self.secret, self.interface, self.peers, self.store = secret, interface, peers, store
         self.command = command
         self.post = post or self._https_post
-        self.registry_fetcher = registry_fetcher or self._https_registry_fetch
+        self.registry_fetcher = registry_fetcher if registry_fetcher is not None else (
+            self._https_registry_fetch if not peers else None
+        )
         self.max_outage_seconds = max_outage_seconds
 
     @staticmethod
@@ -291,6 +298,7 @@ class WireGuardMeter:
     def _remove_peer(self, key):
         self._wg("set", self.interface, "peer", key, "remove")
         self.store.mark_disabled(key)
+        self.store.unmanage(key)
         LOG.warning("managed peer suspended: %s", key[:10])
 
     def _register_peer(self, peer):
@@ -334,14 +342,20 @@ class WireGuardMeter:
         return peers
 
     def sync_registry(self):
+        if self.registry_fetcher is None:
+            return self.peers
         active = self._fetch_registry()
         stale_keys = self.store.replace_registry(active)
         for key in stale_keys:
-            if not self.store.disabled(key):
-                try:
-                    self._remove_peer(key)
-                except Exception as exc:
-                    LOG.critical("stale managed peer removal failed for %s (%s)", key[:10], type(exc).__name__)
+            if self.store.disabled(key):
+                self.store.unmanage(key)
+                continue
+            try:
+                self._remove_peer(key)
+            except Exception as exc:
+                LOG.critical("stale managed peer removal failed for %s (%s)", key[:10], type(exc).__name__)
+        for key in active:
+            self.store.enable(key)
         self.peers = active
         return active
 

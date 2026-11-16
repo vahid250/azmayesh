@@ -27,9 +27,12 @@ const required = [
   'id="paymentMethodFeedback"',
   "به‌زودی فعال خواهد شد",
   "درگاه رمزارزی هنوز متصل نشده",
-  "برنامه دوره آزمایشی ۳۰ روزه R&amp;MA",
+  "R&amp;MA در مرحله آماده‌سازی",
   "100 MB PER REF",
-  "servicePaused = status.mode === \"paused\""
+  "servicePaused = status.mode === \"paused\"",
+  "serviceActivationsAllowed = status.accepting_new_activations === true",
+  "serviceActivationsAllowed && !servicePaused",
+  "پاداش معرفی هنوز فعال نیست"
 ];
 for (const marker of required) {
   if (!html.includes(marker)) throw new Error("Dashboard integration marker missing: " + marker);

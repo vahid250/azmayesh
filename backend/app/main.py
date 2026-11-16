@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -210,8 +210,9 @@ def create_wireguard_config(
     auth: dict = Depends(require_authenticated_request),
     db: Session = Depends(get_db),
 ):
-    # No verified payment/entitlement/quota ledger exists yet. Fail closed in
-    # production even if a valid Telegram identity is supplied.
+    # Billing and entitlement ledgers now exist, but production issuance remains
+    # fail-closed until a real payment adapter, traffic meter, and server rollout
+    # have been independently verified.
     if get_settings().app_env == "production":
         raise HTTPException(
             status_code=503,

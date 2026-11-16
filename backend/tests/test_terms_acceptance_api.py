@@ -74,6 +74,7 @@ def test_public_terms_metadata_identifies_draft_and_canonical_document():
     payload = response.json()
     assert payload["version"] == main.CURRENT_TERMS_VERSION
     assert payload["status"] == "draft_testing_only"
+    assert payload["privacy_document_path"].endswith("docs/PRIVACY_POLICY_FA.md")
     assert payload["acceptance_enabled"] is True
     assert payload["legal_effect"] == "not_final_terms_or_a_payment_authorization"
 

@@ -66,6 +66,7 @@ class Order(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     telegram_user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     plan_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(16), default="crypto", nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     currency: Mapped[str] = mapped_column(String(12), nullable=False)

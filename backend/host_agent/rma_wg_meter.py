@@ -585,7 +585,8 @@ def main():
                 "authorized_peers_missing_from_interface": missing,
                 "pending_removal_count": len(removals),
                 "observed_interface_peer_count": len(observed),
-                "read_only": True,
+                "no_peer_changes": True,
+                "no_usage_submission": True,
             }
             print(json.dumps(result, sort_keys=True))
             return 0 if missing == 0 and not removals else 2

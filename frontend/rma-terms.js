@@ -25,6 +25,13 @@
     link.className = "text-[12px] text-primary underline";
     link.textContent = "مطالعه متن کامل شرایط و سیاست بازپرداخت";
 
+    const privacyLink = document.createElement("a");
+    privacyLink.href = metadata.privacy_document_path || "#";
+    privacyLink.target = "_blank";
+    privacyLink.rel = "noopener noreferrer";
+    privacyLink.className = "text-[12px] text-primary underline";
+    privacyLink.textContent = "مطالعه سیاست حریم خصوصی و داده‌ها";
+
     const label = document.createElement("label");
     label.className = "flex items-start gap-2 text-[12px] leading-6 text-on-surface cursor-pointer";
     const checkbox = document.createElement("input");
@@ -42,7 +49,7 @@
     feedback.setAttribute("role", "status");
     feedback.textContent = "بدون علامت‌زدن این گزینه، ادامه فرایند سفارش مجاز نخواهد بود.";
 
-    panel.append(heading, status, link, label, feedback);
+    panel.append(heading, status, link, privacyLink, label, feedback);
     cta.parentNode.insertBefore(panel, cta);
 
     cta.addEventListener("click", function (event) {

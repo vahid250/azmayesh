@@ -56,11 +56,11 @@ Requests outside a five-minute clock window are rejected. The request body is li
 
 ## Host-side WireGuard agent (experimental)
 
-A host-side agent now exists under `backend/host_agent/`. It samples `wg show <interface> dump`, computes RX+TX byte deltas, stores counters and pending reports in a durable SQLite outbox, signs requests using the backend's HMAC format, retries with the same event ID/body, and removes a peer using `wg set <interface> peer <public-key> remove` when the backend returns HTTP 404 or 409.
+A host-side agent now exists under `backend/host_agent/`. It samples `wg show <interface> dump`, computes RX+TX byte deltas, stores counters and pending reports in a durable SQLite outbox, signs requests using the backend's HMAC format, retries with the same event ID/body, and removes a peer using `wg set <interface> peer <public-key> remove` on permanent authentication, validation, entitlement, or quota rejection. It also removes the peer after the configured bounded outage window (default 120 seconds) if no usage report is accepted.
 
 The agent requires a trusted registry mapping each backend `client_id` to the peer public key. This registry must be kept in sync by the trusted provisioning workflow; it is not populated automatically yet. The systemd unit and environment example are templates only. The service has not been installed on a VPN host, and no shared secret has been generated or configured.
 
-The agent is interval-based, not kernel-level byte-perfect shaping. A peer can transfer additional bytes between a sample and removal. The backend rejects an interval that exceeds remaining quota rather than accepting a partial interval, so the final interval may be under-recorded. If peer removal fails, the agent logs a critical error; monitoring and operator response are required.
+The agent is interval-based, not kernel-level byte-perfect shaping. A peer can transfer additional bytes between a sample and removal. The backend rejects an interval that exceeds remaining quota rather than accepting a partial interval, so the final interval may be under-recorded. Transient API/network failures are retried with a durable outbox, then fail closed by removing the peer after the configured outage window. If peer removal fails, the agent logs a critical error; monitoring and operator response are required.
 
 ## Important operational limit
 

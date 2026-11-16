@@ -8,6 +8,8 @@ on:
       - "frontend/**"
       - "render.yaml"
       - "docs/MINIAPP_DEPLOYMENT_FA.md"
+      - "docs/USER_TERMS_FA.md"
+      - "docs/PRIVACY_POLICY_FA.md"
       - ".github/workflows/backend-tests.yml"
   pull_request:
     branches: ["main"]
@@ -16,6 +18,8 @@ on:
       - "frontend/**"
       - "render.yaml"
       - "docs/MINIAPP_DEPLOYMENT_FA.md"
+      - "docs/USER_TERMS_FA.md"
+      - "docs/PRIVACY_POLICY_FA.md"
       - ".github/workflows/backend-tests.yml"
 
 jobs:

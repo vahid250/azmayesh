@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import Base, engine, get_db
-from app.models import Entitlement, Order, Plan, WireGuardClient, WireGuardClientOwner
+from app.models import Entitlement, Order, OrderTermsAcceptance, Plan, WireGuardClient, WireGuardClientOwner
 from app.security import decrypt_secret, require_authenticated_request
 from app.billing import active_entitlement_for_user, create_order as create_order_record, record_verified_usage
 from app.metering import METERING_PATH, METERING_REGISTRY_PATH, METERING_PEER_ACK_PATH, verify_metering_signature, verify_signed_internal_request
@@ -23,6 +23,8 @@ from app import models  # noqa: F401 - register ORM metadata
 
 
 app = FastAPI(title="R&MA Backend Lab", version="0.5.0")
+CURRENT_TERMS_VERSION = "0.2"
+TERMS_DOCUMENT_PATH = "/docs/USER_TERMS_FA.md"
 app.include_router(telegram_router)
 
 # SQLite is used only for local development and lightweight tests. A Worker
@@ -75,6 +77,7 @@ def public_service_status():
 class OrderRequest(BaseModel):
     plan_code: str = Field(min_length=1, max_length=40)
     payment_method: str = Field(default="crypto", pattern="^(crypto|rial)$")
+    terms_version: str = Field(min_length=1, max_length=32)
 
 
 class UsageReportRequest(BaseModel):
@@ -357,6 +360,18 @@ def list_active_plans(db: Session = Depends(get_db)):
     ]
 
 
+@app.get("/api/v1/public/terms")
+def public_terms_metadata():
+    """Expose the single canonical draft version; this is not a legal approval."""
+    return {
+        "version": CURRENT_TERMS_VERSION,
+        "status": "draft_testing_only",
+        "document_path": TERMS_DOCUMENT_PATH,
+        "acceptance_enabled": True,
+        "legal_effect": "not_final_terms_or_a_payment_authorization",
+    }
+
+
 @app.post("/api/v1/orders")
 def create_user_order(
     request: OrderRequest,
@@ -365,12 +380,15 @@ def create_user_order(
     db: Session = Depends(get_db),
 ):
     ensure_new_activations_enabled()
+    if request.terms_version != CURRENT_TERMS_VERSION:
+        raise HTTPException(status_code=409, detail="شرایط استفاده تغییر کرده است؛ نسخه جدید را مطالعه و تأیید کنید.")
     order = create_order_record(
         db,
         owner_id_from_auth(auth),
         request.plan_code,
         idempotency_key,
         request.payment_method,
+        terms_version=request.terms_version,
     )
     return order_payload(order)
 

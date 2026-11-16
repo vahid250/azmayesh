@@ -388,8 +388,7 @@ def health():
 
     if not get_settings().mock_mode:
         try:
-            # In Cloudflare Workers real provisioning is deliberately disabled;
-            # WireGuard commands belong on a separate server.
+            # Validate config parameters only; peer commands run on the remote host agent.
             _validate_real_server()
             provisioning_ready = True
         except HTTPException as exc:
@@ -401,6 +400,8 @@ def health():
         "mock_mode": get_settings().mock_mode,
         "real_provisioning_configured": provisioning_ready,
         "provisioning_reason": provisioning_reason,
+        "host_agent_control_plane_configured": len(get_settings().metering_shared_secret) >= 32,
+        "host_agent_online": False,
         "connectivity_verified": False,
     }
 

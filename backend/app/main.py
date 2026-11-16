@@ -61,16 +61,16 @@ def public_service_status():
     paused = service_is_paused()
     days = config.trial_duration_days if config.trial_duration_days in (20, 30) else 30
     return {
-        "mode": "paused" if paused else "trial",
-        "headline": "توقف موقت برای پایش کیفیت" if paused else f"برنامه دوره آزمایشی {days} روزه R&MA",
+        "mode": "paused" if paused else "prelaunch",
+        "headline": "توقف موقت برای پایش کیفیت" if paused else "R&MA در مرحله آماده‌سازی",
         "message": config.service_pause_message if paused else (
-            f"دوره آزمایشی {days} روزه برای ارزیابی کیفیت در نظر گرفته شده است. "
-            "تاریخ شروع رسمی پس از تکمیل آزمایش سرور واقعی اعلام می‌شود."
+            "هنوز دوره آزمایشی آغاز نشده و ثبت سفارش، دریافت وجه و فعال‌سازی اتصال جدید غیرفعال است. "
+            f"دوره آزمایشی برنامه‌ریزی‌شده {days} روزه است؛ زمان شروع پس از آزمون سرور واقعی و اعلام رسمی مشخص می‌شود."
         ),
         "trial_duration_days": days,
         "trial_start_at": config.trial_start_at or None,
         "referral_reward_bytes": max(0, config.referral_reward_bytes),
-        "accepting_new_activations": not paused,
+        "accepting_new_activations": False,
         "existing_connections_policy": "preserved",
     }
 
@@ -384,15 +384,13 @@ def create_user_order(
     ensure_new_activations_enabled()
     if request.terms_version != CURRENT_TERMS_VERSION:
         raise HTTPException(status_code=409, detail="شرایط استفاده تغییر کرده است؛ نسخه جدید را مطالعه و تأیید کنید.")
-    order = create_order_record(
-        db,
-        owner_id_from_auth(auth),
-        request.plan_code,
-        idempotency_key,
-        request.payment_method,
-        terms_version=request.terms_version,
+    # Fail closed until a real payment provider, settlement verification,
+    # refund path, and production readiness checks have been implemented.
+    # A direct API call must not create even a pending order during prelaunch.
+    raise HTTPException(
+        status_code=503,
+        detail="ثبت سفارش و پرداخت هنوز فعال نیست؛ هیچ سفارش یا وجهی دریافت نمی‌شود.",
     )
-    return order_payload(order)
 
 
 @app.get("/api/v1/orders")

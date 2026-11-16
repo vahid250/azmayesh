@@ -208,10 +208,14 @@ async def get_trusted_wireguard_registry(
 
     active_peers, remove_peers = [], []
     for client, entitlement in rows:
+        expires_at = entitlement.expires_at if entitlement is not None else None
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
         entitled = (
             entitlement is not None
             and entitlement.status == "active"
-            and entitlement.expires_at > now
+            and expires_at is not None
+            and expires_at > now
             and entitlement.consumed_bytes < entitlement.quota_bytes
         )
         if client.state in ("pending_peer_registration", "peer_registered") and entitled:

@@ -214,6 +214,10 @@ def record_verified_usage(
         ).scalar_one_or_none()
         if existing and existing.entitlement_id == entitlement_id and existing.bytes_used == bytes_used:
             return db.get(Entitlement, entitlement_id)
+        entitlement = db.get(Entitlement, entitlement_id)
+        if entitlement is not None and entitlement.status == "active":
+            entitlement.status = "suspended"
+            db.commit()
         raise HTTPException(status_code=409, detail="Usage event conflicts with an existing record")
     return db.get(Entitlement, entitlement_id)
 

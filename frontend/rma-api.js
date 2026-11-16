@@ -51,6 +51,15 @@
   }
 
   window.RMAApi = Object.freeze({
+    termsMetadata: function () {
+      return fetch(apiBase() + "/v1/public/terms", {
+        headers: { "Accept": "application/json" },
+        cache: "no-store"
+      }).then(function (r) {
+        if (!r.ok) throw new Error("Terms metadata unavailable: " + r.status);
+        return r.json();
+      });
+    },
     serviceStatus: function () {
       return fetch(apiBase() + "/v1/public/service-status", {
         headers: { "Accept": "application/json" },

@@ -67,7 +67,7 @@ def load_peers(path: str) -> dict[str, Peer]:
         if not isinstance(item, dict):
             raise ValueError("peer registry entries must be objects")
         client_id, key = item.get("client_id"), item.get("public_key")
-        if not isinstance(client_id, int) or client_id <= 0:
+        if type(client_id) is not int or client_id <= 0:
             raise ValueError("client_id must be a positive integer")
         if not isinstance(key, str) or not key.strip() or len(key) > 128:
             raise ValueError("public_key is invalid")
@@ -211,7 +211,8 @@ def build_from_env():
     interval = int(os.environ.get("RMA_POLL_INTERVAL_SECONDS","15"))
     if interval < 5 or interval > 300:
         raise ValueError("poll interval must be between 5 and 300 seconds")
-    Path(state_path).parent.mkdir(parents=True,exist_ok=True)
+    Path(state_path).parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+    os.chmod(Path(state_path).parent,0o700)
     store = MeteringStore(state_path)
     meter = WireGuardMeter(api_base_url=api,secret=secret,interface=interface,
                            peers=load_peers(peers_path),store=store)

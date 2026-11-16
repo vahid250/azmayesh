@@ -379,16 +379,18 @@ class WireGuardMeter:
     def _flush_pending(self, peer):
         pending = self.store.pending(peer.public_key)
         if pending is None:
-            return
+            return True
         try:
             status = self._send(pending)
         except Exception as exc:
-            LOG.warning("pending usage remains queued during peer removal for client %s (%s)", peer.client_id, type(exc).__name__)
-            return
+            LOG.warning("pending usage remains queued for client %s (%s)", peer.client_id, type(exc).__name__)
+            return False
         if 200 <= status < 300:
             self.store.acknowledge(peer.public_key, pending.event_id)
-        elif status in (404, 409):
+            return True
+        if status in (404, 409):
             self.store.discard_pending(peer.public_key)
+        return False
 
     def sync_registry(self):
         if self.registry_fetcher is None:
@@ -412,8 +414,10 @@ class WireGuardMeter:
                 self._ack_peer_status(peer, peer.state)
             except Exception as exc:
                 LOG.critical("managed peer removal/ack failed for client %s (%s)", peer.client_id, type(exc).__name__)
-        for key in active:
-            self.store.enable(key)
+        for key, peer in active.items():
+            # Never re-enable a peer while an older usage interval is unacknowledged.
+            if self._flush_pending(peer):
+                self.store.enable(key)
         self.peers = active
         return active
 

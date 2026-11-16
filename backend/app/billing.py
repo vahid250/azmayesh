@@ -8,7 +8,15 @@ from sqlalchemy.orm import Session
 from app.models import Entitlement, Order, PaymentEvent, Plan, UsageRecord
 
 
-def create_order(db: Session, telegram_user_id: str, plan_code: str, idempotency_key: str) -> Order:
+def create_order(
+    db: Session, telegram_user_id: str, plan_code: str, idempotency_key: str,
+    payment_method: str = "crypto",
+) -> Order:
+    payment_method = (payment_method or "").strip().lower()
+    if payment_method == "rial":
+        raise HTTPException(status_code=409, detail="درگاه پرداخت ریالی به‌زودی فعال خواهد شد.")
+    if payment_method != "crypto":
+        raise HTTPException(status_code=422, detail="روش پرداخت معتبر نیست")
     key = (idempotency_key or "").strip()
     if len(key) < 16 or len(key) > 128:
         raise HTTPException(status_code=422, detail="Idempotency-Key must contain 16 to 128 characters")
@@ -20,8 +28,8 @@ def create_order(db: Session, telegram_user_id: str, plan_code: str, idempotency
         )
     ).scalar_one_or_none()
     if existing:
-        if existing.plan_code != plan_code:
-            raise HTTPException(status_code=409, detail="Idempotency-Key was already used for another plan")
+        if existing.plan_code != plan_code or existing.payment_method != payment_method:
+            raise HTTPException(status_code=409, detail="Idempotency-Key was already used for another order")
         return existing
 
     plan = db.execute(select(Plan).where(Plan.code == plan_code, Plan.is_active.is_(True))).scalar_one_or_none()
@@ -31,6 +39,7 @@ def create_order(db: Session, telegram_user_id: str, plan_code: str, idempotency
     order = Order(
         telegram_user_id=telegram_user_id,
         plan_code=plan.code,
+        payment_method=payment_method,
         idempotency_key=key,
         amount_minor=plan.amount_minor,
         currency=plan.currency,
@@ -50,7 +59,7 @@ def create_order(db: Session, telegram_user_id: str, plan_code: str, idempotency
                 Order.idempotency_key == key,
             )
         ).scalar_one_or_none()
-        if existing and existing.plan_code == plan_code:
+        if existing and existing.plan_code == plan_code and existing.payment_method == payment_method:
             return existing
         raise HTTPException(status_code=409, detail="Order idempotency conflict")
     db.refresh(order)

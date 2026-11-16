@@ -10,6 +10,8 @@ from app.config import get_settings
 
 
 def verify_telegram_init_data(init_data: str) -> dict:
+    if len(init_data) > 16384:
+        raise HTTPException(status_code=401, detail="Telegram initData is too large")
     if not get_settings().telegram_bot_token:
         raise HTTPException(status_code=503, detail="Telegram WebApp authentication is not configured")
     try:

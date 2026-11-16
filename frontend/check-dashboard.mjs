@@ -27,7 +27,6 @@ const required = [
   "درگاه رمزارزی هنوز متصل نشده",
   "برنامه دوره آزمایشی ۳۰ روزه R&amp;MA",
   "100 MB PER REF",
-  "serviceStatus: function ()",
   "servicePaused = status.mode === \"paused\""
 ];
 for (const marker of required) {
@@ -51,7 +50,7 @@ if (!html.includes("disableUnimplementedTelegramCommands") || !html.includes('ur
 if (!html.includes('const webFallbackUrl = "https://t.me/RMA_Connect_Bot";')) {
   throw new Error("Quick launch must use the plain bot URL.");
 }
-if (!apiClient.includes("X-Telegram-Init-Data") || !apiClient.includes("/v1/public/service-status")) {
+if (!apiClient.includes("X-Telegram-Init-Data") || !apiClient.includes("/v1/public/service-status") || !apiClient.includes("serviceStatus: function ()")) {
   throw new Error("Telegram initData header missing from API client.");
 }
 

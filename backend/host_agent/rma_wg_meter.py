@@ -258,8 +258,11 @@ class WireGuardMeter:
                  command: Callable = subprocess.run, post: Callable | None = None,
                  registry_fetcher: Callable | None = None, max_outage_seconds: int = 120):
         parsed = urlsplit(api_base_url)
-        if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
-            raise ValueError("API base URL must use HTTPS")
+        if (
+            parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment
+            or parsed.username or parsed.password or parsed.path not in ("", "/")
+        ):
+            raise ValueError("API base URL must be an HTTPS origin without credentials, path, query, or fragment")
         if not re.fullmatch(r"[A-Za-z0-9_.-]{1,15}", interface):
             raise ValueError("invalid WireGuard interface name")
         if len(secret) < 32:
@@ -555,6 +558,7 @@ def build_from_env():
     Path(state_path).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(Path(state_path).parent, 0o700)
     store = MeteringStore(state_path)
+    os.chmod(state_path, 0o600)
     meter = WireGuardMeter(
         api_base_url=api, secret=secret, interface=interface, peers={},
         store=store, max_outage_seconds=max_outage,

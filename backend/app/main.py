@@ -24,7 +24,7 @@ from app import models  # noqa: F401 - register ORM metadata
 
 app = FastAPI(title="R&MA Backend Lab", version="0.5.0")
 CURRENT_TERMS_VERSION = "0.2"
-TERMS_DOCUMENT_PATH = "/docs/USER_TERMS_FA.md"
+TERMS_DOCUMENT_PATH = "https://github.com/vahid250/azmayesh/blob/rebuild/rma-hardening-from-dashboard/docs/USER_TERMS_FA.md"
 app.include_router(telegram_router)
 
 # SQLite is used only for local development and lightweight tests. A Worker

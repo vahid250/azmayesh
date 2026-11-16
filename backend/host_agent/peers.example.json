@@ -1,0 +1,8 @@
+{
+  "peers": [
+    {
+      "client_id": 123,
+      "public_key": "BASE64_WIREGUARD_PUBLIC_KEY"
+    }
+  ]
+}

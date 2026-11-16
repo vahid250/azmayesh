@@ -52,9 +52,8 @@ def test_order_snapshots_plan_and_idempotency_is_stable(db):
     assert first.amount_minor == 12500
     assert first.quota_bytes == 1000
 
-    with pytest.raises(HTTPException) as exc:
-        create_order(db, "telegram-1", "sample-30d", "order-key-00000002")
-    assert exc.value.status_code == 409 or exc.value.status_code == 404
+    second = create_order(db, "telegram-1", "sample-30d", "order-key-00000002")
+    assert second.id != first.id
 
 
 def test_idempotency_key_cannot_be_reused_for_a_different_plan(db):

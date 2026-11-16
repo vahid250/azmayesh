@@ -308,3 +308,103 @@ def test_signed_peer_registry_only_returns_current_entitlements(monkeypatch):
     finally:
         app.dependency_overrides.clear()
         engine.dispose()
+
+
+def test_signed_host_agent_acknowledges_registration_and_revocation(monkeypatch):
+    from app.metering import METERING_PEER_ACK_PATH
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    with TestingSession() as db:
+        order = Order(
+            telegram_user_id="ack-user",
+            plan_code="ack-test",
+            idempotency_key="ack-test-order-0001",
+            amount_minor=0,
+            currency="TEST",
+            quota_bytes=1000,
+            max_devices=1,
+            duration_days=1,
+            status="paid",
+        )
+        db.add(order)
+        db.flush()
+        entitlement = Entitlement(
+            order_id=order.id,
+            telegram_user_id="ack-user",
+            quota_bytes=1000,
+            consumed_bytes=0,
+            max_devices=1,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            status="active",
+        )
+        db.add(entitlement)
+        db.flush()
+        peer = WireGuardClient(
+            client_name="ack-peer",
+            client_ip="10.99.0.9/32",
+            public_key="ack-test-public-key",
+            private_key_encrypted="encrypted",
+            config_encrypted="encrypted",
+            state="pending_peer_registration",
+        )
+        db.add(peer)
+        db.flush()
+        db.add(WireGuardClientOwner(
+            client_id=peer.id,
+            telegram_user_id="ack-user",
+            entitlement_id=entitlement.id,
+        ))
+        db.commit()
+        peer_id = peer.id
+
+    def override_get_db():
+        db = TestingSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    monkeypatch.setattr(settings, "metering_shared_secret", SECRET)
+    from app.main import app
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        client = TestClient(app)
+
+        def send_ack(state, event_id):
+            timestamp = str(int(time.time()))
+            body = json.dumps({
+                "client_id": peer_id,
+                "public_key": "ack-test-public-key",
+                "state": state,
+            }, separators=(",", ":"), sort_keys=True).encode()
+            canonical = "\n".join([
+                "POST", METERING_PEER_ACK_PATH, timestamp, event_id,
+                hashlib.sha256(body).hexdigest(),
+            ])
+            signature = hmac.new(SECRET.encode(), canonical.encode(), hashlib.sha256).hexdigest()
+            return client.post(METERING_PEER_ACK_PATH, content=body, headers={
+                "X-RMA-Timestamp": timestamp,
+                "X-RMA-Event-Id": event_id,
+                "X-RMA-Signature": signature,
+                "Content-Type": "application/json",
+            })
+
+        registered = send_ack("peer_registered", "ack-event-0001")
+        assert registered.status_code == 200
+        assert registered.json()["state"] == "peer_registered"
+
+        with TestingSession() as db:
+            row = db.get(WireGuardClient, peer_id)
+            row.state = "revocation_pending"
+            db.commit()
+        revoked = send_ack("revoked", "ack-event-0002")
+        assert revoked.status_code == 200
+        assert revoked.json()["state"] == "revoked"
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()

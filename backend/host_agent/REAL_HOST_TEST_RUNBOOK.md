@@ -97,7 +97,7 @@ Never publish the config, private key, API key, or shared secret.
 ## 8. Limits and stop conditions
 
 - The agent polls counters; this is interval metering, not kernel-level byte-perfect shaping. Small additional traffic can pass between sampling and peer removal.
-- The last over-quota interval is rejected as a whole and the entitlement is marked exhausted; the final interval may be under-recorded.
+- The full measured final interval is recorded for audit, while entitlement consumption is capped at the purchased quota. A small amount of traffic may pass between the final sample and peer removal, but it is not debited beyond the quota.
 - If peer removal fails, the agent logs a critical error. Do not proceed with customer traffic.
 - The API currently does not expose live handshake telemetry from the host agent; verify handshake directly on the VPN host during this lab.
 - Do not test failure modes by blocking the only remote management path on a production server.

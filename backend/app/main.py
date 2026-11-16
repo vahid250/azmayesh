@@ -217,8 +217,8 @@ def create_wireguard_config(
         raise HTTPException(
             status_code=503,
             detail=(
-                "Configuration issuance is disabled in production until "
-                "payment verification, entitlement, quota, and idempotency controls are implemented."
+                "Configuration issuance remains disabled in production until "
+                "a verified payment adapter, trusted traffic metering, and real VPN server rollout are complete."
             ),
         )
     owner_id = owner_id_from_auth(auth)

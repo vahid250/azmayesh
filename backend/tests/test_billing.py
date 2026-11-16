@@ -56,6 +56,19 @@ def test_order_snapshots_plan_and_idempotency_is_stable(db):
     assert second.id != first.id
 
 
+def test_rial_payment_is_rejected_before_an_order_is_created(db):
+    with pytest.raises(HTTPException) as exc:
+        create_order(db, "iran-user", "sample-30d", "order-key-rial-00001", "rial")
+    assert exc.value.status_code == 409
+    assert "به‌زودی فعال" in exc.value.detail
+    assert db.execute(select(Order)).scalars().all() == []
+
+
+def test_crypto_payment_method_is_persisted_on_order(db):
+    order = create_order(db, "crypto-user", "sample-30d", "order-key-crypto-0001", "crypto")
+    assert order.payment_method == "crypto"
+
+
 def test_idempotency_key_cannot_be_reused_for_a_different_plan(db):
     create_order(db, "telegram-2", "sample-30d", "order-key-00000003")
     with pytest.raises(HTTPException) as exc:

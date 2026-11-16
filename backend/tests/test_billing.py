@@ -187,6 +187,7 @@ def test_usage_cannot_exceed_quota_and_failed_charge_is_rolled_back(db):
     assert exc.value.status_code == 409
     db.refresh(entitlement)
     assert entitlement.consumed_bytes == 700
+    assert entitlement.status == "exhausted"
     assert len(db.execute(select(UsageRecord)).scalars().all()) == 1
 
 

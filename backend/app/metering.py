@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 METERING_PATH = "/api/v1/internal/metering/usage"
 METERING_REGISTRY_PATH = "/api/v1/internal/metering/peers"
+METERING_PEER_ACK_PATH = "/api/v1/internal/metering/peer-status"
 MAX_CLOCK_SKEW_SECONDS = 300
 
 

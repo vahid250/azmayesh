@@ -5,7 +5,7 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 ## Security boundary
 - The backend and host must receive the same random shared secret (minimum 32 characters) through an operator-managed secret store. Never commit it or put it in the Mini App, bot, peer registry, or logs.
 - The API URL must use HTTPS. Client-reported counters are never accepted.
-- The peer registry maps WireGuard public keys to backend client IDs. It contains no private keys and must be maintained by the trusted provisioning workflow.
+- The agent retrieves peer IDs, public keys, and allowed IPs from the authenticated backend registry over HTTPS. No private keys are returned to the agent.
 - Run under a dedicated OS account with narrowly scoped permission to read counters and remove peers. Protect the registry and SQLite state from untrusted writes.
 - SQLite keeps a durable outbox. Retries reuse the exact body and event ID; a baseline is not advanced while a report is pending.
 - Permanent HTTP errors cause peer removal. Transient HTTP errors and network errors retain the pending report for bounded retry; the peer is removed if no report is accepted, or the WireGuard counters cannot be sampled, before the outage window expires.

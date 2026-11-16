@@ -30,6 +30,7 @@ class PendingEvent:
     public_key: str
     bytes_used: int
     body: bytes
+    created_at: float
 
 def parse_wg_dump(output: str) -> dict[str, Counters]:
     """Parse wg show IFACE dump output; skip the interface header row."""

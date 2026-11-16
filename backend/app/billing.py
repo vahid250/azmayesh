@@ -154,11 +154,23 @@ def confirm_verified_payment(
         db.commit()
     except IntegrityError:
         db.rollback()
-        # Provider retries and simultaneous callbacks are safe: read the committed result.
+        # A concurrent callback may have committed first. Accept only an exact
+        # replay of that persisted provider event; never treat a different event
+        # for the same order as a successful duplicate settlement.
+        committed_event = db.execute(
+            select(PaymentEvent).where(PaymentEvent.order_id == order_id)
+        ).scalar_one_or_none()
         entitlement = db.execute(
             select(Entitlement).where(Entitlement.order_id == order_id)
         ).scalar_one_or_none()
-        if entitlement is not None:
+        if (
+            committed_event is not None
+            and entitlement is not None
+            and committed_event.provider == provider
+            and committed_event.provider_event_id == event_id
+            and committed_event.amount_minor == amount_minor
+            and committed_event.currency == currency
+        ):
             return entitlement
         raise HTTPException(status_code=409, detail="Payment event conflicts with an existing settlement")
     db.refresh(entitlement)

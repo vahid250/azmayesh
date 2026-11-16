@@ -11,7 +11,7 @@ from app.database import Base, engine, get_db
 from app.models import Entitlement, Order, Plan, WireGuardClient, WireGuardClientOwner
 from app.security import decrypt_secret, require_authenticated_request
 from app.billing import active_entitlement_for_user, create_order as create_order_record, record_verified_usage
-from app.metering import METERING_PATH, METERING_REGISTRY_PATH, verify_metering_signature, verify_signed_internal_request
+from app.metering import METERING_PATH, METERING_REGISTRY_PATH, METERING_PEER_ACK_PATH, verify_metering_signature, verify_signed_internal_request
 from app.wireguard import (
     _validate_real_server,
     get_wireguard_peer_status,
@@ -50,6 +50,12 @@ class UsageReportRequest(BaseModel):
 
 class HostRegistryRequest(BaseModel):
     interface: str = Field(min_length=1, max_length=15)
+
+
+class PeerStatusAckRequest(BaseModel):
+    client_id: int = Field(gt=0)
+    public_key: str = Field(min_length=1, max_length=128)
+    state: str = Field(pattern="^(peer_registered|revoked|suspended)$")
 
 
 def order_payload(order: Order) -> dict:
@@ -166,7 +172,7 @@ async def get_trusted_wireguard_registry(
     x_rma_signature: str = Header(..., alias="X-RMA-Signature"),
     db: Session = Depends(get_db),
 ):
-    """Return only currently entitled, registered R&MA peers to the trusted host agent."""
+    """Return authorized peers and required removals to the trusted VPN host agent."""
     raw_body = await request.body()
     if len(raw_body) > 4096:
         raise HTTPException(status_code=413, detail="Registry request is too large")
@@ -185,35 +191,113 @@ async def get_trusted_wireguard_registry(
         raise HTTPException(status_code=422, detail="Invalid host registry request") from None
     if payload.interface != get_settings().wg_interface:
         raise HTTPException(status_code=409, detail="Requested WireGuard interface does not match this backend")
+
     now = datetime.now(timezone.utc)
     rows = db.execute(
-        select(WireGuardClient, WireGuardClientOwner)
+        select(WireGuardClient, Entitlement)
         .join(WireGuardClientOwner, WireGuardClientOwner.client_id == WireGuardClient.id)
-        .join(Entitlement, Entitlement.id == WireGuardClientOwner.entitlement_id)
-        .where(
-            WireGuardClient.state == "peer_registered",
-            Entitlement.status == "active",
-            Entitlement.expires_at > now,
-            Entitlement.consumed_bytes < Entitlement.quota_bytes,
-        )
+        .outerjoin(Entitlement, Entitlement.id == WireGuardClientOwner.entitlement_id)
+        .where(WireGuardClient.state.in_([
+            "pending_peer_registration", "peer_registered", "revocation_pending", "suspended", "revoked"
+        ]))
         .order_by(WireGuardClient.id.asc())
         .limit(2001)
     ).all()
     if len(rows) > 2000:
         raise HTTPException(status_code=503, detail="WireGuard registry exceeds the supported safe batch size")
-    return {
-        "interface": payload.interface,
-        "generated_at": now,
-        "peers": [
-            {
+
+    active_peers, remove_peers = [], []
+    for client, entitlement in rows:
+        entitled = (
+            entitlement is not None
+            and entitlement.status == "active"
+            and entitlement.expires_at > now
+            and entitlement.consumed_bytes < entitlement.quota_bytes
+        )
+        if client.state in ("pending_peer_registration", "peer_registered") and entitled:
+            active_peers.append({
                 "client_id": client.id,
                 "public_key": client.public_key,
                 "allowed_ips": client.client_ip,
-            }
-            for client, _owner in rows
-        ],
+                "state": client.state,
+            })
+        else:
+            remove_state = "revoked" if client.state in ("revocation_pending", "revoked") else "suspended"
+            remove_peers.append({
+                "client_id": client.id,
+                "public_key": client.public_key,
+                "state": remove_state,
+            })
+    return {
+        "interface": payload.interface,
+        "generated_at": now,
+        "peers": active_peers,
+        "remove_peers": remove_peers,
     }
 
+
+@app.post(METERING_PEER_ACK_PATH)
+async def acknowledge_host_peer_state(
+    request: Request,
+    x_rma_timestamp: str = Header(..., alias="X-RMA-Timestamp"),
+    x_rma_event_id: str = Header(..., alias="X-RMA-Event-Id"),
+    x_rma_signature: str = Header(..., alias="X-RMA-Signature"),
+    db: Session = Depends(get_db),
+):
+    raw_body = await request.body()
+    if len(raw_body) > 4096:
+        raise HTTPException(status_code=413, detail="Peer status report is too large")
+    verify_signed_internal_request(
+        secret=get_settings().metering_shared_secret,
+        method="POST",
+        path=METERING_PEER_ACK_PATH,
+        timestamp=x_rma_timestamp,
+        event_id=x_rma_event_id,
+        signature=x_rma_signature,
+        body=raw_body,
+    )
+    try:
+        report = PeerStatusAckRequest.model_validate_json(raw_body)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid peer status report") from None
+
+    row = db.get(WireGuardClient, report.client_id)
+    if row is None or row.public_key != report.public_key:
+        raise HTTPException(status_code=404, detail="WireGuard peer not found")
+    if report.state == "peer_registered":
+        if row.state == "peer_registered":
+            return {"accepted": True, "client_id": row.id, "state": row.state}
+        if row.state != "pending_peer_registration":
+            raise HTTPException(status_code=409, detail="Peer is no longer awaiting registration")
+        owner = db.get(WireGuardClientOwner, row.id)
+        entitlement = db.get(Entitlement, owner.entitlement_id) if owner and owner.entitlement_id else None
+        expires_at = entitlement.expires_at if entitlement is not None else None
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if (
+            entitlement is None or entitlement.status != "active"
+            or expires_at is None or expires_at <= datetime.now(timezone.utc)
+            or entitlement.consumed_bytes >= entitlement.quota_bytes
+        ):
+            raise HTTPException(status_code=409, detail="Peer entitlement is no longer active")
+    elif report.state == "revoked":
+        if row.state == "revoked":
+            return {"accepted": True, "client_id": row.id, "state": row.state}
+        if row.state != "revocation_pending":
+            raise HTTPException(status_code=409, detail="Peer is not awaiting revocation")
+    elif report.state == "suspended":
+        if row.state == "suspended":
+            return {"accepted": True, "client_id": row.id, "state": row.state}
+        owner = db.get(WireGuardClientOwner, row.id)
+        entitlement = db.get(Entitlement, owner.entitlement_id) if owner and owner.entitlement_id else None
+        expires_at = entitlement.expires_at if entitlement is not None else None
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if entitlement is not None and entitlement.status == "active" and expires_at and expires_at > datetime.now(timezone.utc) and entitlement.consumed_bytes < entitlement.quota_bytes:
+            raise HTTPException(status_code=409, detail="Peer entitlement remains active")
+    row.state = report.state
+    db.commit()
+    return {"accepted": True, "client_id": row.id, "state": row.state}
 
 @app.get("/api/v1/plans")
 def list_active_plans(db: Session = Depends(get_db)):
@@ -341,7 +425,7 @@ def create_wireguard_config(
         .join(WireGuardClient, WireGuardClient.id == WireGuardClientOwner.client_id)
         .where(
             WireGuardClientOwner.entitlement_id == entitlement.id,
-            WireGuardClient.state != "revoked",
+            WireGuardClient.state.in_(["pending_peer_registration", "peer_registered"]),
         )
     ).scalar_one()
     if active_devices >= entitlement.max_devices:
@@ -386,8 +470,8 @@ def get_wireguard_config(
     db: Session = Depends(get_db),
 ):
     row = get_client_or_404(db, client_id, owner_id_from_auth(auth))
-    if row.state == "revoked":
-        raise HTTPException(status_code=410, detail="This WireGuard client has been revoked")
+    if row.state in ("revoked", "revocation_pending", "suspended"):
+        raise HTTPException(status_code=410, detail="This WireGuard client is no longer active")
     return {
         "id": row.id,
         "client_name": row.client_name,

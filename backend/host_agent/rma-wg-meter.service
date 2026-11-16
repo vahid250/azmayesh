@@ -25,7 +25,7 @@ LockPersonality=true
 MemoryDenyWriteExecute=true
 
 # Grant this account only the host-specific permissions needed for wg show
-# and wg set peer removal. Do not make it generally privileged.
+# and wg set peer registration/removal. Do not make it generally privileged.
 
 [Install]
 WantedBy=multi-user.target

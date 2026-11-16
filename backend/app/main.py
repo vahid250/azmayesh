@@ -2,13 +2,14 @@ import os
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import Base, engine, get_db
-from app.models import WireGuardClient, WireGuardClientOwner
+from app.models import Entitlement, Order, Plan, WireGuardClient, WireGuardClientOwner
 from app.security import decrypt_secret, require_authenticated_request
+from app.billing import active_entitlement_for_user, create_order as create_order_record
 from app.wireguard import (
     _validate_real_server,
     get_wireguard_peer_status,
@@ -34,6 +35,25 @@ if (
 
 class WireGuardRequest(BaseModel):
     client_name: str = Field(default="R&MA Client", min_length=1, max_length=64)
+
+
+class OrderRequest(BaseModel):
+    plan_code: str = Field(min_length=1, max_length=40)
+
+
+def order_payload(order: Order) -> dict:
+    return {
+        "id": order.id,
+        "plan_code": order.plan_code,
+        "amount_minor": order.amount_minor,
+        "currency": order.currency,
+        "quota_bytes": order.quota_bytes,
+        "max_devices": order.max_devices,
+        "duration_days": order.duration_days,
+        "status": order.status,
+        "created_at": order.created_at,
+        "paid_at": order.paid_at,
+    }
 
 
 def owner_id_from_auth(auth: dict) -> str:
@@ -83,6 +103,82 @@ def database_diagnostic(
     }
 
 
+
+@app.get("/api/v1/plans")
+def list_active_plans(db: Session = Depends(get_db)):
+    plans = db.execute(
+        select(Plan).where(Plan.is_active.is_(True)).order_by(Plan.amount_minor.asc(), Plan.code.asc())
+    ).scalars().all()
+    return [
+        {
+            "code": plan.code,
+            "title": plan.title,
+            "amount_minor": plan.amount_minor,
+            "currency": plan.currency,
+            "quota_bytes": plan.quota_bytes,
+            "max_devices": plan.max_devices,
+            "duration_days": plan.duration_days,
+        }
+        for plan in plans
+    ]
+
+
+@app.post("/api/v1/orders")
+def create_user_order(
+    request: OrderRequest,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    auth: dict = Depends(require_authenticated_request),
+    db: Session = Depends(get_db),
+):
+    order = create_order_record(
+        db,
+        owner_id_from_auth(auth),
+        request.plan_code,
+        idempotency_key,
+    )
+    return order_payload(order)
+
+
+@app.get("/api/v1/orders")
+def list_user_orders(
+    auth: dict = Depends(require_authenticated_request),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        select(Order)
+        .where(Order.telegram_user_id == owner_id_from_auth(auth))
+        .order_by(Order.id.desc())
+        .limit(100)
+    ).scalars().all()
+    return [order_payload(order) for order in rows]
+
+
+@app.get("/api/v1/entitlements")
+def list_user_entitlements(
+    auth: dict = Depends(require_authenticated_request),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        select(Entitlement)
+        .where(Entitlement.telegram_user_id == owner_id_from_auth(auth))
+        .order_by(Entitlement.expires_at.desc(), Entitlement.id.desc())
+        .limit(100)
+    ).scalars().all()
+    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    return [
+        {
+            "id": item.id,
+            "quota_bytes": item.quota_bytes,
+            "consumed_bytes": item.consumed_bytes,
+            "remaining_bytes": max(0, item.quota_bytes - item.consumed_bytes),
+            "max_devices": item.max_devices,
+            "expires_at": item.expires_at,
+            "status": "expired" if item.expires_at <= now and item.status == "active" else item.status,
+        }
+        for item in rows
+    ]
+
+
 @app.get("/health")
 def health():
     provisioning_ready = False
@@ -123,7 +219,24 @@ def create_wireguard_config(
                 "payment verification, entitlement, quota, and idempotency controls are implemented."
             ),
         )
-    return issue_wireguard_config(db, request.client_name, owner_id_from_auth(auth))
+    owner_id = owner_id_from_auth(auth)
+    entitlement = active_entitlement_for_user(db, owner_id)
+    active_devices = db.execute(
+        select(func.count(WireGuardClientOwner.client_id))
+        .join(WireGuardClient, WireGuardClient.id == WireGuardClientOwner.client_id)
+        .where(
+            WireGuardClientOwner.entitlement_id == entitlement.id,
+            WireGuardClient.state != "revoked",
+        )
+    ).scalar_one()
+    if active_devices >= entitlement.max_devices:
+        raise HTTPException(status_code=403, detail="The active entitlement has reached its device limit")
+    return issue_wireguard_config(
+        db,
+        request.client_name,
+        owner_id,
+        entitlement_id=entitlement.id,
+    )
 
 
 @app.get("/api/v1/wireguard/configs")

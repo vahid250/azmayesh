@@ -21,7 +21,6 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/rma-meter
-ReadOnlyPaths=/etc/rma/peers.json
 LockPersonality=true
 MemoryDenyWriteExecute=true
 

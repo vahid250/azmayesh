@@ -129,3 +129,17 @@ class UsageRecord(Base):
     source_event_id: Mapped[str] = mapped_column(String(160), nullable=False)
     bytes_used: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class OrderTermsAcceptance(Base):
+    """Immutable record that a user accepted a specific terms version for an order."""
+    __tablename__ = "order_terms_acceptances"
+    __table_args__ = (
+        UniqueConstraint("order_id", name="uq_order_terms_acceptance_order"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False)
+    telegram_user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    terms_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

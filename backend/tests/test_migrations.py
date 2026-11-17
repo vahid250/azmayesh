@@ -22,7 +22,7 @@ def test_initial_migration_is_registered_and_has_expected_tables():
     assert revision.revision == "0005_user_sessions"
     source = Path(scripts.get_revision("0002_billing_ledger").path).read_text(encoding="utf-8")
     payment_method_migration = Path(scripts.get_revision("0003_order_payment_method").path).read_text(encoding="utf-8")
-    terms_migration = Path(revision.path).read_text(encoding="utf-8")
+    terms_migration = Path(scripts.get_revision("0004_order_terms_acceptance").path).read_text(encoding="utf-8")
     sessions_migration = Path(revision.path).read_text(encoding="utf-8")
     initial = Path(scripts.get_revision("0001_initial").path).read_text(encoding="utf-8")
     assert '"wireguard_clients"' in initial

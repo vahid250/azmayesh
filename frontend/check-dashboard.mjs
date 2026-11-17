@@ -80,6 +80,9 @@ if (!html.includes('id="rmaQuickNav"') || !html.includes('href="#faqSection"') |
 if (!html.includes('id="aboutSection"') || !html.includes("کیفیت واقعی به‌جای وعده‌های تبلیغاتی") || html.includes("@RMA_Support")) {
   throw new Error("About section or verified support destination is missing.");
 }
+if (html.includes("فرانکفورت، DE") || html.includes("10 Gbps Uplink") || html.includes("ساخت توکن با پارامتر اختصاصی ارسال می‌شود")) {
+  throw new Error("Unverified server location, bandwidth, or activation claims remain visible.");
+}
 if (html.includes("دکمه رفع قطعی (/fix_connection)") || html.includes("سرورهای ترکیه (استانبول) با پینگ")) {
   throw new Error("Unimplemented troubleshooting or unverified server claims remain in FAQ.");
 }

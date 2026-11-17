@@ -12,7 +12,7 @@ const proxyModule = await import("data:text/javascript;base64," + Buffer.from(pr
 const dbPath = path.join(os.tmpdir(), "rma-e2e-" + process.pid + ".sqlite");
 const encryptionKey = "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=";
 const apiKey = "rma-e2e-only-secret";
-const bearerToken = "proxy-bearer-session-token";
+const bearerToken = "A".repeat(43);
 
 async function freePort() {
   return new Promise((resolve, reject) => {
@@ -70,7 +70,7 @@ with SessionLocal() as db:
     now = datetime.now(timezone.utc)
     db.add(models.UserSession(
         telegram_user_id="12345",
-        token_hash=hashlib.sha256(b"proxy-bearer-session-token").hexdigest(),
+        token_hash=hashlib.sha256(b"${bearerToken}").hexdigest(),
         exchange_key_hash=hashlib.sha256(b"proxy-exchange-key").hexdigest(),
         init_data_hash=hashlib.sha256(b"proxy-init-data").hexdigest(),
         key_version=1,

@@ -2,6 +2,11 @@ name: R&MA Real PostgreSQL Alembic Test
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - rebuild/rma-hardening-from-dashboard
+    paths:
+      - .github/workflows/alembic-neon-real-test.yml
 
 permissions:
   contents: read

@@ -164,3 +164,16 @@ def test_invalid_init_data_age_policy_fails_closed(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         verify_telegram_init_data(signed_init_data(values))
     assert exc.value.status_code == 503
+
+
+
+def test_init_data_age_policy_cannot_be_configured_above_one_hour(monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", TOKEN)
+    monkeypatch.setattr(settings, "telegram_init_data_max_age_seconds", 3601)
+    values = {
+        "auth_date": str(int(time.time())),
+        "user": json.dumps({"id": 12345}, separators=(",", ":")),
+    }
+    with pytest.raises(HTTPException) as exc:
+        verify_telegram_init_data(signed_init_data(values))
+    assert exc.value.status_code == 503

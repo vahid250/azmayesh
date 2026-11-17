@@ -94,7 +94,8 @@ def test_idle_expired_session_is_rejected_and_can_be_reissued(db_factory, monkey
         assert exc.value.status_code == 401
         renewed = issue_user_session(db, "12345", init_data, key)
         assert renewed["access_token"] == issued["access_token"]
-        assert row.last_seen_at > datetime.now(timezone.utc) - timedelta(seconds=10)
+        last_seen = row.last_seen_at.replace(tzinfo=timezone.utc) if row.last_seen_at.tzinfo is None else row.last_seen_at
+        assert last_seen > datetime.now(timezone.utc) - timedelta(seconds=10)
 
 
 def test_absolute_expiry_and_revocation_are_enforced(db_factory, monkeypatch):

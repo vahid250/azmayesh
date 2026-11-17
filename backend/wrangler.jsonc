@@ -9,6 +9,19 @@
     "MOCK_MODE": "true",
     "TELEGRAM_INIT_DATA_MAX_AGE_SECONDS": "3600"
   },
+  "python_modules": {
+    "exclude": [
+      "**/*.pyc",
+      "**/__pycache__/**",
+      "**/tests/**",
+      "**/test/**",
+      "**/*.pyi",
+      "sqlalchemy/dialects/mysql/**",
+      "sqlalchemy/dialects/sqlite/**",
+      "sqlalchemy/dialects/mssql/**",
+      "sqlalchemy/dialects/oracle/**"
+    ]
+  },
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",

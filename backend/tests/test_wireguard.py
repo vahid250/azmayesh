@@ -116,9 +116,18 @@ def test_mock_endpoint_marks_config_as_non_connectable_and_encrypts_storage(monk
         secret = hmac.new(b"WebAppData", settings.telegram_bot_token.encode(), hashlib.sha256).digest()
         check = "\n".join(f"{k}={v}" for k, v in sorted(foreign_values.items()))
         foreign_values["hash"] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+        foreign_init_data = urlencode(foreign_values)
+        import base64
+        from app.security import issue_user_session
+        monkeypatch.setattr(settings, "session_derivation_key", "wireguard-foreign-session-secret-" * 2)
+        foreign_exchange_key = base64.urlsafe_b64encode(b"f" * 32).rstrip(b"=").decode()
+        with TestingSession() as session_db:
+            foreign_session = issue_user_session(
+                session_db, "9876", foreign_init_data, foreign_exchange_key
+            )
         foreign = client.get(
             f"/api/v1/wireguard/configs/{client_id}/config",
-            headers={"X-Telegram-Init-Data": urlencode(foreign_values)},
+            headers={"Authorization": "Bearer " + foreign_session["access_token"]},
         )
         assert foreign.status_code == 404
 

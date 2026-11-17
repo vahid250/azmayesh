@@ -161,7 +161,7 @@ class MeteringStore:
           CREATE TABLE IF NOT EXISTS pending_events(
             public_key TEXT PRIMARY KEY, event_id TEXT NOT NULL UNIQUE, client_id INTEGER NOT NULL,
             bytes_used INTEGER NOT NULL CHECK(bytes_used>0), body BLOB NOT NULL,
-            created_at REAL NOT NULL DEFAULT 0);
+            created_at REAL NOT NULL DEFAULT 0, failure_status INTEGER);
           CREATE TABLE IF NOT EXISTS agent_state(key TEXT PRIMARY KEY, value REAL NOT NULL);
           CREATE TABLE IF NOT EXISTS managed_peers(
             public_key TEXT PRIMARY KEY, client_id INTEGER NOT NULL, allowed_ips TEXT NOT NULL);
@@ -169,6 +169,8 @@ class MeteringStore:
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(pending_events)")}
         if "created_at" not in columns:
             self.db.execute("ALTER TABLE pending_events ADD COLUMN created_at REAL NOT NULL DEFAULT 0")
+        if "failure_status" not in columns:
+            self.db.execute("ALTER TABLE pending_events ADD COLUMN failure_status INTEGER")
         self.db.commit()
 
     def disabled(self, key):
@@ -177,16 +179,17 @@ class MeteringStore:
 
     def pending(self, key):
         row = self.db.execute(
-            "SELECT event_id,client_id,bytes_used,body,created_at FROM pending_events WHERE public_key=?",
+            "SELECT event_id,client_id,bytes_used,body,created_at,failure_status FROM pending_events WHERE public_key=?",
             (key,),
         ).fetchone()
-        return PendingEvent(row[0], row[1], key, row[2], bytes(row[3]), row[4]) if row else None
+        return PendingEvent(row[0], row[1], key, row[2], bytes(row[3]), row[4], row[5]) if row else None
 
     def pending_all(self):
         rows = self.db.execute(
-            "SELECT event_id,client_id,public_key,bytes_used,body,created_at FROM pending_events ORDER BY created_at"
+            """SELECT event_id,client_id,public_key,bytes_used,body,created_at,failure_status
+               FROM pending_events WHERE failure_status IS NULL ORDER BY created_at"""
         ).fetchall()
-        return [PendingEvent(row[0], row[1], row[2], row[3], bytes(row[4]), row[5]) for row in rows]
+        return [PendingEvent(row[0], row[1], row[2], row[3], bytes(row[4]), row[5], row[6]) for row in rows]
 
     def prepare_delta(self, peer, current_total):
         if current_total < 0:
@@ -235,6 +238,14 @@ class MeteringStore:
                 (key,),
             )
     
+    def mark_permanent_failure(self, key, event_id, status):
+        with self.db:
+            self.db.execute(
+                "UPDATE pending_events SET failure_status=? WHERE public_key=? AND event_id=?",
+                (status, key, event_id),
+            )
+
+
     def discard_pending(self, key):
         with self.db:
             self.db.execute("DELETE FROM pending_events WHERE public_key=?", (key,))
@@ -420,16 +431,21 @@ class WireGuardMeter:
         pending = self.store.pending(peer.public_key)
         if pending is None:
             return True
+        if pending.failure_status is not None:
+            self._remove_peer_for_usage_failure(peer.public_key, peer.client_id, pending.failure_status)
+            return False
         try:
             status = self._send(pending)
         except Exception as exc:
-            LOG.warning("pending usage remains queued for client %s (%s)", peer.client_id, type(exc).__name__)
+            if time.time() - pending.created_at >= self.max_outage_seconds:
+                self._remove_peer_for_usage_failure(peer.public_key, peer.client_id, "network outage")
+            else:
+                LOG.warning("pending usage remains queued for client %s (%s)", peer.client_id, type(exc).__name__)
             return False
         if 200 <= status < 300:
             self.store.acknowledge(peer.public_key, pending.event_id)
             return True
-        if status in (404, 409):
-            self.store.discard_pending(peer.public_key)
+        self._handle_usage_response(pending, status)
         return False
 
     def sync_registry(self):
@@ -464,6 +480,44 @@ class WireGuardMeter:
     def _send(self, event):
         headers = self._signed_headers(self.secret, METERING_PATH, event.body, event.event_id)
         return self.post(self.api_url, headers, event.body)
+
+    def _remove_peer_for_usage_failure(self, key, client_id, reason):
+        if self.store.disabled(key):
+            return
+        try:
+            self._remove_peer(key)
+        except Exception as exc:
+            LOG.critical(
+                "peer removal failed after usage delivery problem for client %s (%s: %s); operator action required",
+                client_id,
+                reason,
+                type(exc).__name__,
+            )
+
+    def _handle_usage_response(self, event, status):
+        permanent_statuses = {400, 401, 403, 404, 409, 410, 422}
+        if status in permanent_statuses:
+            self.store.mark_permanent_failure(event.public_key, event.event_id, status)
+            LOG.critical(
+                "usage event for client %s was permanently rejected with HTTP %s; event retained for operator review",
+                event.client_id,
+                status,
+            )
+            self._remove_peer_for_usage_failure(event.public_key, event.client_id, f"HTTP {status}")
+            return
+        if time.time() - event.created_at >= self.max_outage_seconds:
+            LOG.critical(
+                "usage event for client %s remains unaccepted after the outage window (HTTP %s); event retained",
+                event.client_id,
+                status,
+            )
+            self._remove_peer_for_usage_failure(event.public_key, event.client_id, f"HTTP {status}")
+        else:
+            LOG.warning(
+                "usage API returned HTTP %s for client %s; event retained for bounded retry",
+                status,
+                event.client_id,
+            )
 
     def run_once(self):
         registry_ok = False
@@ -502,8 +556,8 @@ class WireGuardMeter:
                 continue
             if 200 <= status < 300:
                 self.store.acknowledge(pending_event.public_key, pending_event.event_id)
-            elif status in (404, 409):
-                self.store.discard_pending(pending_event.public_key)
+            else:
+                self._handle_usage_response(pending_event, status)
 
         try:
             counters = self.sample()
@@ -541,6 +595,9 @@ class WireGuardMeter:
                 if not self._ack_peer_status(peer, "peer_registered"):
                     continue
             pending = self.store.pending(key)
+            if pending is not None and pending.failure_status is not None:
+                self._remove_peer_for_usage_failure(key, peer.client_id, pending.failure_status)
+                continue
             if pending is None:
                 pending = self.store.prepare_delta(peer, current.total)
             if pending is None:
@@ -558,23 +615,8 @@ class WireGuardMeter:
                 continue
             if 200 <= status < 300:
                 self.store.acknowledge(key, pending.event_id)
-            elif status in (401, 403, 404, 410):
-                if status in (404, 410):
-                    self.store.discard_pending(key)
-                try:
-                    self._remove_peer(key)
-                except Exception as exc:
-                    LOG.critical("peer enforcement failed for %s (%s); operator action required", key[:10], type(exc).__name__)
-            elif status == 409:
-                self.store.discard_pending(key)
-                LOG.warning("backend rejected usage for client %s; awaiting authoritative registry removal", peer.client_id)
-            elif time.time() - pending.created_at >= self.max_outage_seconds:
-                try:
-                    self._remove_peer(key)
-                except Exception as exc:
-                    LOG.critical("metering outage and peer removal failed for %s (%s)", key[:10], type(exc).__name__)
             else:
-                LOG.error("metering API returned HTTP %s; event retained for bounded retry", status)
+                self._handle_usage_response(pending, status)
 
 
 def build_from_env():

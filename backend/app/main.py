@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import Base, engine, get_db
-from app.models import Entitlement, Order, OrderTermsAcceptance, Plan, WireGuardClient, WireGuardClientOwner
-from app.security import decrypt_secret, require_authenticated_request
+from app.models import Entitlement, Order, OrderTermsAcceptance, Plan, UserSession, WireGuardClient, WireGuardClientOwner
+from app.security import authenticate_session_token, decrypt_secret, issue_user_session, require_authenticated_request, revoke_user_session, verify_telegram_init_data
 from app.billing import active_entitlement_for_user, record_verified_usage
 from app.metering import METERING_PATH, METERING_REGISTRY_PATH, METERING_PEER_ACK_PATH, verify_metering_signature, verify_signed_internal_request
 from app.wireguard import (
@@ -53,8 +53,48 @@ if (
     Base.metadata.create_all(bind=engine)
 
 
+class SessionExchangeRequest(BaseModel):
+    init_data: str = Field(min_length=1, max_length=16384)
+    exchange_key: str = Field(min_length=43, max_length=43)
+
+
 class WireGuardRequest(BaseModel):
     client_name: str = Field(default="R&MA Client", min_length=1, max_length=64)
+
+
+def authenticate_request(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    db: Session = Depends(get_db),
+) -> dict:
+    if authorization:
+        scheme, _, credential = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not credential or " " in credential:
+            raise HTTPException(status_code=401, detail="A valid Bearer session is required")
+        return authenticate_session_token(db, credential)
+    # The lab API key remains available only in explicit development/test mode.
+    return require_authenticated_request(x_api_key=x_api_key, x_telegram_init_data=None)
+
+
+@app.post("/api/v1/auth/session")
+def exchange_telegram_session(request: SessionExchangeRequest, db: Session = Depends(get_db)):
+    verified = verify_telegram_init_data(request.init_data)
+    return issue_user_session(db, str(verified["user"]["id"]), request.init_data, request.exchange_key)
+
+
+@app.post("/api/v1/auth/logout")
+def logout_session(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    db: Session = Depends(get_db),
+):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Bearer session is required")
+    scheme, _, credential = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not credential or " " in credential:
+        raise HTTPException(status_code=401, detail="A valid Bearer session is required")
+    authenticate_session_token(db, credential)
+    revoke_user_session(db, credential)
+    return {"revoked": True}
 
 
 def service_is_paused() -> bool:
@@ -149,7 +189,7 @@ def get_client_or_404(db: Session, client_id: int, owner_id: str) -> WireGuardCl
 
 @app.get("/api/v1/diagnostics/database")
 def database_diagnostic(
-    auth: dict = Depends(require_authenticated_request),
+    auth: dict = Depends(authenticate_request),
     db: Session = Depends(get_db),
 ):
     """Run an authenticated, read-only database connectivity probe."""
@@ -392,7 +432,7 @@ def public_terms_metadata():
 @app.post("/api/v1/orders")
 def create_user_order(
     request: OrderRequest,
-    auth: dict = Depends(require_authenticated_request),
+    auth: dict = Depends(authenticate_request),
 ):
     ensure_new_activations_enabled()
     if request.terms_version != CURRENT_TERMS_VERSION:
@@ -408,7 +448,7 @@ def create_user_order(
 
 @app.get("/api/v1/orders")
 def list_user_orders(
-    auth: dict = Depends(require_authenticated_request),
+    auth: dict = Depends(authenticate_request),
     db: Session = Depends(get_db),
 ):
     rows = db.execute(
@@ -422,7 +462,7 @@ def list_user_orders(
 
 @app.get("/api/v1/entitlements")
 def list_user_entitlements(
-    auth: dict = Depends(require_authenticated_request),
+    auth: dict = Depends(authenticate_request),
     db: Session = Depends(get_db),
 ):
     rows = db.execute(
@@ -477,7 +517,7 @@ def health():
 @app.post("/api/v1/wireguard/configs")
 def create_wireguard_config(
     request: WireGuardRequest,
-    auth: dict = Depends(require_authenticated_request),
+    auth: dict = Depends(authenticate_request),
     db: Session = Depends(get_db),
 ):
     ensure_new_activations_enabled()
@@ -514,7 +554,7 @@ def create_wireguard_config(
 
 @app.get("/api/v1/wireguard/configs")
 def list_wireguard_configs(
-    auth: dict = Depends(require_authenticated_request),
+    auth: dict = Depends(authenticate_request),
     db: Session = Depends(get_db),
 ):
     owner_id = owner_id_from_auth(auth)
@@ -540,7 +580,7 @@ def list_wireguard_configs(
 @app.get("/api/v1/wireguard/configs/{client_id}/config")
 def get_wireguard_config(
     client_id: int,
-    auth: dict = Depends(require_authenticated_request),
+    auth: dict = Depends(authenticate_request),
     db: Session = Depends(get_db),
 ):
     row = get_client_or_404(db, client_id, owner_id_from_auth(auth))
@@ -558,7 +598,7 @@ def get_wireguard_config(
 @app.get("/api/v1/wireguard/configs/{client_id}/status")
 def wireguard_status(
     client_id: int,
-    auth: dict = Depends(require_authenticated_request),
+    auth: dict = Depends(authenticate_request),
     db: Session = Depends(get_db),
 ):
     return get_wireguard_peer_status(get_client_or_404(db, client_id, owner_id_from_auth(auth)))
@@ -567,7 +607,7 @@ def wireguard_status(
 @app.post("/api/v1/wireguard/configs/{client_id}/revoke")
 def revoke_wireguard_config(
     client_id: int,
-    auth: dict = Depends(require_authenticated_request),
+    auth: dict = Depends(authenticate_request),
     db: Session = Depends(get_db),
 ):
     return revoke_wireguard_peer(db, get_client_or_404(db, client_id, owner_id_from_auth(auth)))

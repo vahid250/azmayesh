@@ -1,6 +1,9 @@
+import base64
 import hashlib
 import hmac
 import subprocess
+
+import pytest
 
 from host_agent.rma_wg_meter import (
     METERING_PATH, Counters, MeteringStore, Peer, WireGuardMeter,
@@ -8,7 +11,7 @@ from host_agent.rma_wg_meter import (
 )
 
 SECRET = "agent-test-secret-that-is-longer-than-thirty-two-characters"
-PUB = "test-wireguard-public-key"
+PUB = base64.b64encode(b"p" * 32).decode("ascii")
 
 
 def dump(rx, tx):
@@ -274,3 +277,94 @@ def test_pending_peer_is_acknowledged_only_after_host_observes_or_registers_it(t
     assert b'"state":"peer_registered"' in acknowledgements[0][2]
     assert any(call[1:] == ["set", "wg0", "peer", PUB, "allowed-ips", "10.0.0.2/32"] for call in wg.calls)
     store.close()
+
+
+
+@pytest.mark.parametrize(
+    "bad_key",
+    ["not-a-wireguard-key", "AA==", "A" * 44],
+)
+def test_signed_registry_rejects_malformed_wireguard_public_keys(tmp_path, bad_key):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    payload = {
+        "interface": "wg0",
+        "peers": [{
+            "client_id": 7,
+            "public_key": bad_key,
+            "allowed_ips": "10.0.0.2/32",
+            "state": "peer_registered",
+        }],
+        "remove_peers": [],
+    }
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test",
+        secret=SECRET,
+        interface="wg0",
+        peers={},
+        store=store,
+        command=FakeWG(),
+        registry_fetcher=lambda *_: payload,
+    )
+    try:
+        with pytest.raises(ValueError, match="public key"):
+            meter._fetch_registry()
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    "allowed_ips",
+    ["0.0.0.0/0", "10.0.0.0/24", "2001:db8::2/128", "127.0.0.1/32", "10.0.0.2/31"],
+)
+def test_signed_registry_rejects_routes_that_are_not_single_customer_ipv4_hosts(tmp_path, allowed_ips):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    payload = {
+        "interface": "wg0",
+        "peers": [{
+            "client_id": 7,
+            "public_key": PUB,
+            "allowed_ips": allowed_ips,
+            "state": "peer_registered",
+        }],
+        "remove_peers": [],
+    }
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test",
+        secret=SECRET,
+        interface="wg0",
+        peers={},
+        store=store,
+        command=FakeWG(),
+        registry_fetcher=lambda *_: payload,
+    )
+    try:
+        with pytest.raises(ValueError, match="allowed_ips"):
+            meter._fetch_registry()
+    finally:
+        store.close()
+
+
+def test_signed_registry_rejects_duplicate_peer_ip_assignments(tmp_path):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    payload = {
+        "interface": "wg0",
+        "peers": [
+            {"client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "peer_registered"},
+            {"client_id": 8, "public_key": base64.b64encode(b"q" * 32).decode("ascii"), "allowed_ips": "10.0.0.2/32", "state": "peer_registered"},
+        ],
+        "remove_peers": [],
+    }
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test",
+        secret=SECRET,
+        interface="wg0",
+        peers={},
+        store=store,
+        command=FakeWG(),
+        registry_fetcher=lambda *_: payload,
+    )
+    try:
+        with pytest.raises(ValueError, match="duplicate peer IP"):
+            meter._fetch_registry()
+    finally:
+        store.close()

@@ -29,7 +29,7 @@ def client_and_db():
             db.close()
 
     main.app.dependency_overrides[get_db] = override_db
-    main.app.dependency_overrides[main.require_authenticated_request] = lambda: {
+    main.app.dependency_overrides[main.authenticate_request] = lambda: {
         "auth_method": "test", "user": {"id": 24680}
     }
     try:

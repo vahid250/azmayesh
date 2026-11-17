@@ -114,7 +114,7 @@ def _validate_real_server() -> None:
             ipaddress.ip_address(host)
         except ValueError:
             label = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
-            if len(host) > 253 or not re.fullmatch(label + r"(?:\\." + label + r")*", host):
+            if len(host) > 253 or not re.fullmatch(label + r"(?:\." + label + r")*", host):
                 raise ValueError("invalid endpoint hostname")
 
         decoded_key = base64.b64decode(raw_public_key, validate=True)

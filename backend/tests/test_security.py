@@ -143,10 +143,11 @@ def test_init_data_rejects_too_many_query_fields(monkeypatch):
     assert exc.value.status_code == 401
 
 
-def test_lab_api_key_is_never_enabled_by_case_variant_of_production(monkeypatch):
+@pytest.mark.parametrize("app_env", ["Production", "staging", "prodution", ""])
+def test_lab_api_key_is_enabled_only_in_explicit_development_environments(monkeypatch, app_env):
     from app.security import require_authenticated_request
 
-    monkeypatch.setattr(settings, "app_env", "Production")
+    monkeypatch.setattr(settings, "app_env", app_env)
     monkeypatch.setattr(settings, "api_key", "lab-secret")
     monkeypatch.setattr(settings, "telegram_bot_token", "")
     with pytest.raises(HTTPException) as exc:

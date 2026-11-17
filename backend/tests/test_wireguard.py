@@ -290,3 +290,92 @@ def test_production_config_issuance_is_blocked_until_entitlements_exist(monkeypa
 
     assert exc.value.status_code == 503
     assert "payment adapter" in exc.value.detail.lower()
+
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "vpn.example.com:51820\\nAllowedIPs = 0.0.0.0/0",
+        "vpn.example.com:51820\\r\\n[Peer]",
+        "vpn.example.com:51820/path",
+        "user@vpn.example.com:51820",
+        "vpn.example.com:0",
+        "vpn.example.com:65536",
+        "vpn.example.com:abc",
+    ],
+)
+def test_real_server_endpoint_rejects_config_injection_and_invalid_authority(monkeypatch, endpoint):
+    import base64
+    import pytest
+    from fastapi import HTTPException
+    from app.config import settings
+    from app.wireguard import _validate_real_server
+
+    monkeypatch.setattr(settings, "mock_mode", False)
+    monkeypatch.setattr(settings, "wg_server_endpoint", endpoint)
+    monkeypatch.setattr(settings, "wg_server_public_key", base64.b64encode(b"s" * 32).decode())
+
+    with pytest.raises(HTTPException) as exc:
+        _validate_real_server()
+    assert exc.value.status_code == 503
+
+
+def test_real_server_endpoint_accepts_bracketed_ipv6(monkeypatch):
+    import base64
+    from app.config import settings
+    from app.wireguard import _validate_real_server
+
+    monkeypatch.setattr(settings, "mock_mode", False)
+    monkeypatch.setattr(settings, "wg_server_endpoint", "[2001:db8::1]:51820")
+    monkeypatch.setattr(settings, "wg_server_public_key", base64.b64encode(b"s" * 32).decode())
+
+    _validate_real_server()
+
+
+@pytest.mark.parametrize(
+    "dns_value",
+    [
+        "1.1.1.1\\nAllowedIPs=0.0.0.0/0",
+        "1.1.1.1,not-an-ip",
+        "1.1.1.1,,8.8.8.8",
+        "",
+    ],
+)
+def test_wireguard_dns_rejects_invalid_or_injected_values(monkeypatch, dns_value):
+    import pytest
+    from fastapi import HTTPException
+    from app.config import settings
+    from app.wireguard import _validate_client_config_settings
+
+    monkeypatch.setattr(settings, "wg_dns", dns_value)
+    monkeypatch.setattr(settings, "wg_mtu", 1360)
+
+    with pytest.raises(HTTPException) as exc:
+        _validate_client_config_settings()
+    assert exc.value.status_code == 503
+
+
+@pytest.mark.parametrize("mtu", [0, 575, 1279, 9001, -1])
+def test_wireguard_mtu_rejects_out_of_range_values(monkeypatch, mtu):
+    import pytest
+    from fastapi import HTTPException
+    from app.config import settings
+    from app.wireguard import _validate_client_config_settings
+
+    monkeypatch.setattr(settings, "wg_dns", "1.1.1.1, 8.8.8.8")
+    monkeypatch.setattr(settings, "wg_mtu", mtu)
+
+    with pytest.raises(HTTPException) as exc:
+        _validate_client_config_settings()
+    assert exc.value.status_code == 503
+
+
+def test_wireguard_config_settings_are_normalized(monkeypatch):
+    from app.config import settings
+    from app.wireguard import _validate_client_config_settings
+
+    monkeypatch.setattr(settings, "wg_dns", "1.1.1.1, 2001:4860:4860::8888")
+    monkeypatch.setattr(settings, "wg_mtu", 1360)
+
+    assert _validate_client_config_settings() == ("1.1.1.1, 2001:4860:4860::8888", 1360)

@@ -52,7 +52,7 @@ def test_oversized_telegram_init_data_is_rejected(monkeypatch):
 def test_expired_telegram_init_data_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "telegram_bot_token", TOKEN)
     monkeypatch.setattr(settings, "telegram_init_data_max_age_seconds", 600)
-    values = {"auth_date": str(int(time.time()) - 601)}
+    values = {"auth_date": str(int(time.time()) - 601), "user": json.dumps({"id": 12345})}
 
     with pytest.raises(HTTPException) as exc:
         verify_telegram_init_data(signed_init_data(values))
@@ -64,7 +64,7 @@ def test_expired_telegram_init_data_is_rejected(monkeypatch):
 def test_future_telegram_init_data_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "telegram_bot_token", TOKEN)
     monkeypatch.setattr(settings, "telegram_init_data_max_age_seconds", 3600)
-    values = {"auth_date": str(int(time.time()) + 31)}
+    values = {"auth_date": str(int(time.time()) + 31), "user": json.dumps({"id": 12345})}
 
     with pytest.raises(HTTPException) as exc:
         verify_telegram_init_data(signed_init_data(values))
@@ -86,8 +86,9 @@ def test_duplicate_telegram_init_data_fields_are_rejected(monkeypatch):
 
 def test_invalid_telegram_init_data_signature_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "telegram_bot_token", TOKEN)
-    values = {"auth_date": str(int(time.time()))}
-    encoded = signed_init_data(values).replace("hash=", "hash=0", 1)
+    values = {"auth_date": str(int(time.time())), "user": json.dumps({"id": 12345})}
+    encoded = signed_init_data(values)
+    encoded = encoded.rsplit("&hash=", 1)[0] + "&hash=" + ("0" * 64)
 
     with pytest.raises(HTTPException) as exc:
         verify_telegram_init_data(encoded)

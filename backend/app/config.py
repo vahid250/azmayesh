@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     # practical compromise; users can reopen the Mini App to obtain fresh data.
     telegram_init_data_max_age_seconds: int = 3600
     encryption_key: str = ""
+    # Independent secret used only to derive opaque Mini App session tokens.
+    session_derivation_key: str = ""
     metering_shared_secret: str = ""
     database_url: str = "sqlite:///./rma_backend.db"
     wg_interface: str = "wg0"
@@ -59,6 +61,7 @@ _WORKER_ENV_FIELDS = {
     "MINI_APP_URL": "mini_app_url",
     "TELEGRAM_INIT_DATA_MAX_AGE_SECONDS": "telegram_init_data_max_age_seconds",
     "ENCRYPTION_KEY": "encryption_key",
+    "RMA_SESSION_DERIVATION_KEY": "session_derivation_key",
     "METERING_SHARED_SECRET": "metering_shared_secret",
     "WG_INTERFACE": "wg_interface",
     "WG_SERVER_ENDPOINT": "wg_server_endpoint",

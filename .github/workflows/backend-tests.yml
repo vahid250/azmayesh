@@ -75,7 +75,13 @@ jobs:
           cp -R app .worker-build/
           cd .worker-build
           set -o pipefail
-          uv run pywrangler deploy --dry-run 2>&1 | tee /tmp/rma-worker-dry-run.log
+          # Sync Pyodide-compatible runtime packages into python_modules.
+          uv run pywrangler sync
+          # The local uv and Pyodide virtual environments are build-time only.
+          # Keep them out of the Worker upload; python_modules contains the
+          # vendored runtime dependencies required by the deployed Worker.
+          rm -rf .venv .venv-workers
+          npx --yes wrangler deploy --dry-run 2>&1 | tee /tmp/rma-worker-dry-run.log
           bundle_kib=$(sed -n 's/.*Total Upload: \([0-9.]*\) KiB.*/\1/p' /tmp/rma-worker-dry-run.log | tail -n 1)
           if [ -z "$bundle_kib" ]; then
             echo "Could not determine the uncompressed Worker bundle size."

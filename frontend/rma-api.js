@@ -26,7 +26,7 @@
   function toBase64Url(bytes) {
     let binary = "";
     bytes.forEach(function (byte) { binary += String.fromCharCode(byte); });
-    return btoa(binary).replace(/=/g, "").replace(/\\+/g, "-").replace(/\\//g, "_");
+    return btoa(binary).replaceAll("=", "").replaceAll("+", "-").replaceAll("/", "_");
   }
 
   async function sha256Hex(value) {

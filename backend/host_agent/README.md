@@ -8,7 +8,7 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 - The agent retrieves peer IDs, public keys, and allowed IPs from the authenticated backend registry over HTTPS. No private keys are returned to the agent.
 - Run under a dedicated OS account with only CAP_NET_ADMIN. That capability applies to the process's network namespace, not a single interface; production should isolate the VPN interface and agent in a dedicated network namespace/container. Protect the registry and SQLite state from untrusted writes.
 - SQLite keeps a durable outbox. Retries reuse the exact body and event ID; a baseline is not advanced while a report is pending.
-- Permanent HTTP errors cause peer removal. Transient HTTP errors and network errors retain the pending report for bounded retry; the peer is removed if no report is accepted, or the WireGuard counters cannot be sampled, before the outage window expires.
+- Permanent usage-report rejections (HTTP 400, 401, 403, 404, 409, 410, or 422) quarantine the event in the durable local outbox for operator review and trigger immediate peer removal; they are not silently discarded or automatically retried. Transient HTTP errors and network errors retain the pending report for bounded retry; the peer is removed if no report is accepted, or the WireGuard counters cannot be sampled, before the outage window expires.
 
 ## Operating assumptions and limitations
 1. Start the agent before enabling customer peers. The first sample is charged from zero.

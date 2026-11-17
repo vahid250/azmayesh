@@ -1,5 +1,6 @@
 import base64
 import ipaddress
+import re
 from urllib.parse import urlsplit
 
 from cryptography.hazmat.primitives import serialization
@@ -47,21 +48,84 @@ def _next_client_ip(db: Session) -> str:
     raise HTTPException(status_code=409, detail="No free client IP addresses remain")
 
 
+def _validate_client_config_settings() -> tuple[str, int]:
+    """Validate values interpolated into the downloadable WireGuard config."""
+    dns_value = get_settings().wg_dns
+    if (
+        not isinstance(dns_value, str)
+        or not dns_value
+        or len(dns_value) > 255
+        or any(ord(char) < 32 or ord(char) == 127 for char in dns_value)
+    ):
+        raise HTTPException(status_code=503, detail="WG_DNS is invalid")
+
+    dns_servers = [item.strip() for item in dns_value.split(",")]
+    if not dns_servers or any(not item for item in dns_servers):
+        raise HTTPException(status_code=503, detail="WG_DNS is invalid")
+    try:
+        normalized_dns = ", ".join(str(ipaddress.ip_address(item)) for item in dns_servers)
+    except ValueError:
+        raise HTTPException(status_code=503, detail="WG_DNS must contain only valid IP addresses") from None
+
+    mtu = get_settings().wg_mtu
+    if isinstance(mtu, bool) or not isinstance(mtu, int) or not 1280 <= mtu <= 9000:
+        raise HTTPException(status_code=503, detail="WG_MTU must be an integer between 1280 and 9000")
+    return normalized_dns, mtu
+
+
 def _validate_real_server() -> None:
-    """Validate client-config parameters only; live WireGuard commands belong to the host agent."""
+    """Validate the literal endpoint and public key embedded in a client config."""
     if get_settings().mock_mode:
         return
-    if not get_settings().wg_server_endpoint or not get_settings().wg_server_public_key:
+
+    raw_endpoint = get_settings().wg_server_endpoint
+    raw_public_key = get_settings().wg_server_public_key
+    if not raw_endpoint or not raw_public_key:
         raise HTTPException(status_code=503, detail="WireGuard server endpoint/public key are not configured")
+
     try:
-        endpoint = urlsplit("//" + get_settings().wg_server_endpoint)
-        decoded_key = base64.b64decode(get_settings().wg_server_public_key, validate=True)
-        if not endpoint.hostname or not endpoint.port or len(decoded_key) != 32:
-            raise ValueError("invalid endpoint or public key")
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=503, detail="WireGuard server endpoint or public key is invalid") from exc
+        # Reject control characters and whitespace before parsing. urlsplit()
+        # normalizes some of them, which is unsafe when the raw value is later
+        # interpolated into the downloadable config.
+        if (
+            len(raw_endpoint) > 300
+            or any(ord(char) <= 32 or ord(char) == 127 for char in raw_endpoint)
+        ):
+            raise ValueError("invalid endpoint characters")
+
+        endpoint = urlsplit("//" + raw_endpoint)
+        host = endpoint.hostname
+        port = endpoint.port
+        if (
+            not host
+            or port is None
+            or not 1 <= port <= 65535
+            or endpoint.netloc != raw_endpoint
+            or endpoint.username is not None
+            or endpoint.password is not None
+            or endpoint.path
+            or endpoint.query
+            or endpoint.fragment
+            or "%" in host
+        ):
+            raise ValueError("invalid endpoint structure")
+
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            label = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+            if len(host) > 253 or not re.fullmatch(label + r"(?:\\." + label + r")*", host):
+                raise ValueError("invalid endpoint hostname")
+
+        decoded_key = base64.b64decode(raw_public_key, validate=True)
+        if len(decoded_key) != 32 or base64.b64encode(decoded_key).decode("ascii") != raw_public_key:
+            raise ValueError("invalid public key")
+    except (ValueError, TypeError, UnicodeError):
+        raise HTTPException(status_code=503, detail="WireGuard server endpoint or public key is invalid") from None
+
 
 def issue_wireguard_config(db: Session, client_name: str, owner_id: str, entitlement_id: int | None = None) -> dict:
+    dns_servers, mtu = _validate_client_config_settings()
     _validate_real_server()
     clean_name = " ".join(client_name.strip().split())[:64]
     if not clean_name:
@@ -82,8 +146,8 @@ def issue_wireguard_config(db: Session, client_name: str, owner_id: str, entitle
             "[Interface]\n"
             f"PrivateKey = {private_key}\n"
             f"Address = {client_ip}\n"
-            f"DNS = {get_settings().wg_dns}\n"
-            f"MTU = {get_settings().wg_mtu}\n\n"
+            f"DNS = {dns_servers}\n"
+            f"MTU = {mtu}\n\n"
             "[Peer]\n"
             f"PublicKey = {server_public_key}\n"
             f"Endpoint = {endpoint}\n"

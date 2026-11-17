@@ -188,7 +188,7 @@ def issue_user_session(db: Session, telegram_user_id: str, init_data: str, excha
             row.token_hash = token_hash
             row.key_version = SESSION_KEY_VERSION
             db.commit()
-        return {"access_token": token, "token_type": "Bearer", "expires_at": _utc(row.expires_at), "expires_in": SESSION_ABSOLUTE_SECONDS}
+        return {"access_token": token, "token_type": "Bearer", "expires_at": _utc(row.expires_at), "expires_in": max(0, int((_utc(row.expires_at) - now).total_seconds()))}
 
     row = UserSession(
         telegram_user_id=telegram_user_id,
@@ -223,9 +223,9 @@ def issue_user_session(db: Session, telegram_user_id: str, init_data: str, excha
 def authenticate_session_token(db: Session, token: str) -> dict:
     from app.models import UserSession
 
-    if not isinstance(token, str) or not 32 <= len(token) <= 128:
+    if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
         raise HTTPException(status_code=401, detail="Bearer session is invalid")
-    token_hash = hashlib.sha256(token.encode("ascii", errors="ignore")).hexdigest()
+    token_hash = hashlib.sha256(token.encode("ascii")).hexdigest()
     row = db.execute(select(UserSession).where(UserSession.token_hash == token_hash)).scalar_one_or_none()
     if row is None or row.revoked_at is not None:
         raise HTTPException(status_code=401, detail="Bearer session is invalid or revoked")
@@ -243,7 +243,9 @@ def authenticate_session_token(db: Session, token: str) -> dict:
 def revoke_user_session(db: Session, token: str) -> None:
     from app.models import UserSession
 
-    token_hash = hashlib.sha256(token.encode("ascii", errors="ignore")).hexdigest()
+    if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
+        raise HTTPException(status_code=401, detail="Bearer session is invalid")
+    token_hash = hashlib.sha256(token.encode("ascii")).hexdigest()
     row = db.execute(select(UserSession).where(UserSession.token_hash == token_hash)).scalar_one_or_none()
     if row is not None and row.revoked_at is None:
         row.revoked_at = datetime.now(timezone.utc)

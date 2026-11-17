@@ -89,7 +89,7 @@ def require_authenticated_request(
 ) -> dict:
     # API-key access is intentionally limited to non-production lab use.
     config = get_settings()
-    if config.app_env.strip().lower() != "production" and config.api_key and x_api_key:
+    if config.app_env.strip().lower() in {"development", "test"} and config.api_key and x_api_key:
         if hmac.compare_digest(x_api_key.encode("utf-8"), config.api_key.encode("utf-8")):
             return {"auth_method": "lab_api_key"}
     if x_telegram_init_data:

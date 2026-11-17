@@ -71,8 +71,17 @@ if (!html.includes("disableUnimplementedTelegramCommands") || !html.includes('ur
 if (!html.includes('const webFallbackUrl = "https://t.me/RMA_Connect_Bot";')) {
   throw new Error("Quick launch must use the plain bot URL.");
 }
-if (!termsClient.includes("privacy_document_path") || !termsClient.includes("مطالعه سیاست حریم خصوصی و داده‌ها") || !html.includes("فرم ارسال نظر هنوز به سامانه پشتیبانی متصل نشده است")) {
-  throw new Error("Privacy disclosure link or honest feedback status is missing.");
+if (!termsClient.includes("privacy_document_path") || !termsClient.includes("مطالعه سیاست حریم خصوصی و داده‌ها") || !html.includes('id="rmaFeedbackOpenBot"') || !html.includes("t.me/RMA_Connect_Bot")) {
+  throw new Error("Privacy disclosure link or usable verified feedback path is missing.");
+}
+if (!html.includes('id="aboutSection"') || !html.includes("کیفیت واقعی به‌جای وعده‌های تبلیغاتی") || html.includes("@RMA_Support")) {
+  throw new Error("About section or verified support destination is missing.");
+}
+if (html.includes("دکمه رفع قطعی (/fix_connection)") || html.includes("سرورهای ترکیه (استانبول) با پینگ")) {
+  throw new Error("Unimplemented troubleshooting or unverified server claims remain in FAQ.");
+}
+if (!html.includes('"primary": "#34d399"') || !html.includes('"primary-container": "#047857"')) {
+  throw new Error("Emerald brand palette is missing.");
 }
 if (!termsClient.includes("draft_testing_only") || !termsClient.includes("تا فعال‌شدن سفارش ذخیره نمی‌شود") || !apiClient.includes("createOrder: function") || !apiClient.includes("terms_version: termsVersion")) {
   throw new Error("Terms acceptance preview and order API contract are incomplete.");

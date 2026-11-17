@@ -65,6 +65,17 @@ with SessionLocal() as db:
         expires_at=datetime.now(timezone.utc) + timedelta(days=30),
         status="active",
     ))
+    now = datetime.now(timezone.utc)
+    db.add(models.UserSession(
+        telegram_user_id="12345",
+        token_hash=hashlib.sha256(b"proxy-bearer-session-token").hexdigest(),
+        exchange_key_hash=hashlib.sha256(b"proxy-exchange-key").hexdigest(),
+        init_data_hash=hashlib.sha256(b"proxy-init-data").hexdigest(),
+        key_version=1,
+        created_at=now,
+        last_seen_at=now,
+        expires_at=now + timedelta(hours=4),
+    ))
     db.commit()
 `;
 const seedResult = spawnSync(
@@ -135,6 +146,17 @@ try {
     body: JSON.stringify({ client_name: "Unauthenticated" })
   });
   assert.equal(denied.status, 401, "backend authentication must be enforced through proxy");
+
+  const legacyInitDataDenied = await throughPagesProxy("/api/v1/orders", {
+    headers: { "X-Telegram-Init-Data": "unsigned-legacy-payload" }
+  });
+  assert.equal(legacyInitDataDenied.status, 401, "private routes must no longer accept raw initData");
+
+  const bearerOrders = await throughPagesProxy("/api/v1/orders", {
+    headers: { "Authorization": "Bearer " + bearerToken }
+  });
+  assert.equal(bearerOrders.status, 200, "Pages proxy must preserve Authorization Bearer");
+  assert.deepEqual(await bearerOrders.json(), []);
 
   const created = await throughPagesProxy("/api/v1/wireguard/configs", {
     method: "POST",

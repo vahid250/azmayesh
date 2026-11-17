@@ -74,4 +74,11 @@ jobs:
           cp worker.py pyproject.toml wrangler.jsonc .worker-build/
           cp -R app .worker-build/
           cd .worker-build
-          uv run pywrangler deploy --dry-run
+          set -o pipefail
+          uv run pywrangler deploy --dry-run 2>&1 | tee /tmp/rma-worker-dry-run.log
+          bundle_kib=$(sed -n 's/.*Total Upload: \([0-9.]*\) KiB.*/\1/p' /tmp/rma-worker-dry-run.log | tail -n 1)
+          if [ -z "$bundle_kib" ]; then
+            echo "Could not determine the uncompressed Worker bundle size."
+            exit 1
+          fi
+          awk -v size="$bundle_kib" 'BEGIN { if (size > 65536) { printf "Worker bundle %.2f KiB exceeds Cloudflare 64 MiB limit (65536 KiB).\n", size; exit 1 } }'

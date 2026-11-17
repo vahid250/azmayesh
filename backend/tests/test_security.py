@@ -107,3 +107,59 @@ def test_non_object_telegram_user_payload_is_rejected(monkeypatch):
 
     assert exc.value.status_code == 401
     assert "user data" in exc.value.detail.lower()
+
+
+
+def test_init_data_requires_auth_date_hash_and_user(monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", TOKEN)
+    values = {"auth_date": str(int(time.time()))}
+    with pytest.raises(HTTPException) as exc:
+        verify_telegram_init_data(signed_init_data(values))
+    assert exc.value.status_code == 401
+    assert "Malformed" in exc.value.detail
+
+
+@pytest.mark.parametrize("user_id", [0, -1, True, "12345", None])
+def test_init_data_rejects_noncanonical_telegram_user_ids(monkeypatch, user_id):
+    monkeypatch.setattr(settings, "telegram_bot_token", TOKEN)
+    monkeypatch.setattr(settings, "telegram_init_data_max_age_seconds", 3600)
+    values = {
+        "auth_date": str(int(time.time())),
+        "user": json.dumps({"id": user_id}, separators=(",", ":")),
+    }
+    with pytest.raises(HTTPException) as exc:
+        verify_telegram_init_data(signed_init_data(values))
+    assert exc.value.status_code == 401
+    assert "identity" in exc.value.detail.lower()
+
+
+def test_init_data_rejects_too_many_query_fields(monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", TOKEN)
+    values = {"auth_date": str(int(time.time())), "user": json.dumps({"id": 12345})}
+    values.update({f"extra_{i}": str(i) for i in range(40)})
+    with pytest.raises(HTTPException) as exc:
+        verify_telegram_init_data(signed_init_data(values))
+    assert exc.value.status_code == 401
+
+
+def test_lab_api_key_is_never_enabled_by_case_variant_of_production(monkeypatch):
+    from app.security import require_authenticated_request
+
+    monkeypatch.setattr(settings, "app_env", "Production")
+    monkeypatch.setattr(settings, "api_key", "lab-secret")
+    monkeypatch.setattr(settings, "telegram_bot_token", "")
+    with pytest.raises(HTTPException) as exc:
+        require_authenticated_request(x_api_key="lab-secret", x_telegram_init_data=None)
+    assert exc.value.status_code == 401
+
+
+def test_invalid_init_data_age_policy_fails_closed(monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", TOKEN)
+    monkeypatch.setattr(settings, "telegram_init_data_max_age_seconds", 0)
+    values = {
+        "auth_date": str(int(time.time())),
+        "user": json.dumps({"id": 12345}, separators=(",", ":")),
+    }
+    with pytest.raises(HTTPException) as exc:
+        verify_telegram_init_data(signed_init_data(values))
+    assert exc.value.status_code == 503

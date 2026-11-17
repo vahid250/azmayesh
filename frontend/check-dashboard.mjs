@@ -74,6 +74,9 @@ if (!html.includes('const webFallbackUrl = "https://t.me/RMA_Connect_Bot";')) {
 if (!termsClient.includes("privacy_document_path") || !termsClient.includes("مطالعه سیاست حریم خصوصی و داده‌ها") || !html.includes('id="rmaFeedbackOpenBot"') || !html.includes("t.me/RMA_Connect_Bot")) {
   throw new Error("Privacy disclosure link or usable verified feedback path is missing.");
 }
+if (!html.includes('id="rmaQuickNav"') || !html.includes('href="#faqSection"') || !html.includes('href="#feedbackSection"') || !html.includes('href="#aboutSection"')) {
+  throw new Error("Quick navigation links to FAQ, feedback, and About are missing.");
+}
 if (!html.includes('id="aboutSection"') || !html.includes("کیفیت واقعی به‌جای وعده‌های تبلیغاتی") || html.includes("@RMA_Support")) {
   throw new Error("About section or verified support destination is missing.");
 }

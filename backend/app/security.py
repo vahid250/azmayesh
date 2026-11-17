@@ -1,12 +1,17 @@
+import base64
 import hashlib
 import hmac
 import json
 import re
 import time
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl
 
 from cryptography.fernet import Fernet
 from fastapi import Header, HTTPException
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 from app.config import get_settings
 
 
@@ -119,3 +124,127 @@ def decrypt_secret(value: str) -> str:
         return get_cipher().decrypt(value.encode("ascii")).decode("utf-8")
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Stored encrypted data could not be decrypted") from exc
+
+
+SESSION_ABSOLUTE_SECONDS = 4 * 60 * 60
+SESSION_IDLE_SECONDS = 30 * 60
+SESSION_TOUCH_INTERVAL_SECONDS = 5 * 60
+SESSION_KEY_VERSION = 1
+
+
+def _utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def _session_token(config, telegram_user_id: str, exchange_key: str, init_data_hash: str) -> str:
+    secret = config.session_derivation_key.encode("utf-8")
+    if len(secret) < 32:
+        raise HTTPException(status_code=503, detail="Session authentication is not configured")
+    # Domain-separated and delimiter-safe inputs prevent cross-protocol ambiguity.
+    message = b"RMA-SESSION-TOKEN\x00v1\x00" + b"\x00".join(
+        (telegram_user_id.encode("ascii"), exchange_key.encode("ascii"), init_data_hash.encode("ascii"))
+    )
+    digest = hmac.new(secret, message, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def issue_user_session(db: Session, telegram_user_id: str, init_data: str, exchange_key: str) -> dict:
+    """Exchange verified initData for an idempotent opaque session token."""
+    if not isinstance(exchange_key, str) or not re.fullmatch(r"[A-Za-z0-9_-]{43}", exchange_key):
+        raise HTTPException(status_code=422, detail="Session exchange key must contain 256 random bits")
+    try:
+        decoded = base64.urlsafe_b64decode(exchange_key + "=")
+    except Exception:
+        raise HTTPException(status_code=422, detail="Session exchange key is invalid") from None
+    if len(decoded) != 32:
+        raise HTTPException(status_code=422, detail="Session exchange key is invalid")
+
+    from app.models import UserSession
+
+    config = get_settings()
+    init_hash = hashlib.sha256(init_data.encode("utf-8")).hexdigest()
+    exchange_hash = hashlib.sha256(exchange_key.encode("ascii")).hexdigest()
+    token = _session_token(config, telegram_user_id, exchange_key, init_hash)
+    token_hash = hashlib.sha256(token.encode("ascii")).hexdigest()
+    now = datetime.now(timezone.utc)
+    row = db.execute(
+        select(UserSession).where(
+            UserSession.telegram_user_id == telegram_user_id,
+            UserSession.exchange_key_hash == exchange_hash,
+        )
+    ).scalar_one_or_none()
+
+    if row is not None:
+        if not hmac.compare_digest(row.init_data_hash, init_hash):
+            raise HTTPException(status_code=409, detail="This exchange key is already bound to different Telegram data")
+        if row.revoked_at is not None:
+            raise HTTPException(status_code=401, detail="This session has been revoked")
+        expires = _utc(row.expires_at)
+        last_seen = _utc(row.last_seen_at)
+        if expires <= now or last_seen + timedelta(seconds=SESSION_IDLE_SECONDS) <= now:
+            row.created_at = now
+            row.last_seen_at = now
+            row.expires_at = now + timedelta(seconds=SESSION_ABSOLUTE_SECONDS)
+            row.token_hash = token_hash
+            row.key_version = SESSION_KEY_VERSION
+            db.commit()
+        return {"access_token": token, "token_type": "Bearer", "expires_at": _utc(row.expires_at), "expires_in": SESSION_ABSOLUTE_SECONDS}
+
+    row = UserSession(
+        telegram_user_id=telegram_user_id,
+        token_hash=token_hash,
+        exchange_key_hash=exchange_hash,
+        init_data_hash=init_hash,
+        key_version=SESSION_KEY_VERSION,
+        created_at=now,
+        last_seen_at=now,
+        expires_at=now + timedelta(seconds=SESSION_ABSOLUTE_SECONDS),
+    )
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # A concurrent retry may have won the unique-key race. Only return
+        # its token if the immutable binding matches exactly.
+        existing = db.execute(
+            select(UserSession).where(
+                UserSession.telegram_user_id == telegram_user_id,
+                UserSession.exchange_key_hash == exchange_hash,
+            )
+        ).scalar_one_or_none()
+        if existing is None or not hmac.compare_digest(existing.init_data_hash, init_hash) or existing.revoked_at is not None:
+            raise HTTPException(status_code=409, detail="Session exchange could not be completed safely") from None
+        if _utc(existing.expires_at) <= now or _utc(existing.last_seen_at) + timedelta(seconds=SESSION_IDLE_SECONDS) <= now:
+            raise HTTPException(status_code=401, detail="Session expired; create a new exchange key")
+    return {"access_token": token, "token_type": "Bearer", "expires_at": now + timedelta(seconds=SESSION_ABSOLUTE_SECONDS), "expires_in": SESSION_ABSOLUTE_SECONDS}
+
+
+def authenticate_session_token(db: Session, token: str) -> dict:
+    from app.models import UserSession
+
+    if not isinstance(token, str) or not 32 <= len(token) <= 128:
+        raise HTTPException(status_code=401, detail="Bearer session is invalid")
+    token_hash = hashlib.sha256(token.encode("ascii", errors="ignore")).hexdigest()
+    row = db.execute(select(UserSession).where(UserSession.token_hash == token_hash)).scalar_one_or_none()
+    if row is None or row.revoked_at is not None:
+        raise HTTPException(status_code=401, detail="Bearer session is invalid or revoked")
+    now = datetime.now(timezone.utc)
+    expires = _utc(row.expires_at)
+    last_seen = _utc(row.last_seen_at)
+    if expires <= now or last_seen + timedelta(seconds=SESSION_IDLE_SECONDS) <= now:
+        raise HTTPException(status_code=401, detail="Bearer session has expired")
+    if now - last_seen >= timedelta(seconds=SESSION_TOUCH_INTERVAL_SECONDS):
+        row.last_seen_at = now
+        db.commit()
+    return {"auth_method": "bearer_session", "user": {"id": int(row.telegram_user_id)}}
+
+
+def revoke_user_session(db: Session, token: str) -> None:
+    from app.models import UserSession
+
+    token_hash = hashlib.sha256(token.encode("ascii", errors="ignore")).hexdigest()
+    row = db.execute(select(UserSession).where(UserSession.token_hash == token_hash)).scalar_one_or_none()
+    if row is not None and row.revoked_at is None:
+        row.revoked_at = datetime.now(timezone.utc)
+        db.commit()

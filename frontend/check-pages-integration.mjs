@@ -12,6 +12,7 @@ const proxyModule = await import("data:text/javascript;base64," + Buffer.from(pr
 const dbPath = path.join(os.tmpdir(), "rma-e2e-" + process.pid + ".sqlite");
 const encryptionKey = "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=";
 const apiKey = "rma-e2e-only-secret";
+const bearerToken = "proxy-bearer-session-token";
 
 async function freePort() {
   return new Promise((resolve, reject) => {
@@ -38,6 +39,7 @@ const childEnv = {
   PYTHONPATH: path.join(frontendDir, "..", "backend")
 };
 const seedScript = `
+import hashlib
 from datetime import datetime, timedelta, timezone
 from app.database import Base, engine, SessionLocal
 from app import models

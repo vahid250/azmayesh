@@ -28,6 +28,21 @@ TERMS_DOCUMENT_PATH = "https://github.com/vahid250/azmayesh/blob/rebuild/rma-har
 PRIVACY_DOCUMENT_PATH = "https://github.com/vahid250/azmayesh/blob/rebuild/rma-hardening-from-dashboard/docs/PRIVACY_POLICY_FA.md"
 app.include_router(telegram_router)
 
+
+@app.middleware("http")
+async def protect_api_responses(request: Request, call_next):
+    """Prevent sensitive API payloads from being cached or framed."""
+    response = await call_next(request)
+    if request.url.path.startswith(("/api/", "/telegram/")):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
+
+
 # SQLite is used only for local development and lightweight tests. A Worker
 # must use the explicitly configured Hyperdrive binding; never create an
 # ephemeral SQLite database in the Worker filesystem.

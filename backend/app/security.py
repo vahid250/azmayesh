@@ -56,7 +56,7 @@ def verify_telegram_init_data(init_data: str) -> dict:
         raise HTTPException(status_code=401, detail="Telegram initData signature is invalid")
 
     max_age = config.telegram_init_data_max_age_seconds
-    if isinstance(max_age, bool) or not isinstance(max_age, int) or not 1 <= max_age <= 86400:
+    if isinstance(max_age, bool) or not isinstance(max_age, int) or not 1 <= max_age <= 3600:
         raise HTTPException(status_code=503, detail="Telegram initData age policy is misconfigured")
 
     now = int(time.time())

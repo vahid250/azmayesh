@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import hmac
 import ipaddress
@@ -76,6 +77,41 @@ def parse_wg_dump(output: str) -> dict[str, Counters]:
             raise ValueError("WireGuard returned negative byte counters")
         peers[key] = Counters(rx, tx)
     return peers
+
+
+def _validate_wireguard_public_key(value: str) -> str:
+    """Accept only canonical base64-encoded 32-byte WireGuard public keys."""
+    if not isinstance(value, str) or len(value) != 44:
+        raise ValueError("trusted registry contains an invalid WireGuard public key")
+    try:
+        decoded = base64.b64decode(value, validate=True)
+    except (ValueError, TypeError):
+        raise ValueError("trusted registry contains an invalid WireGuard public key") from None
+    if len(decoded) != 32 or base64.b64encode(decoded).decode("ascii") != value:
+        raise ValueError("trusted registry contains an invalid WireGuard public key")
+    return value
+
+
+def _validate_peer_allowed_ips(value: str) -> str:
+    """A customer peer may own exactly one IPv4 host address, never a route."""
+    if not isinstance(value, str) or len(value) > 64:
+        raise ValueError("trusted registry contains invalid allowed_ips")
+    try:
+        interface = ipaddress.ip_interface(value)
+    except ValueError:
+        raise ValueError("trusted registry contains invalid allowed_ips") from None
+    address = interface.ip
+    if (
+        interface.version != 4
+        or interface.network.prefixlen != 32
+        or str(interface) != value
+        or address.is_unspecified
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+    ):
+        raise ValueError("trusted registry allowed_ips must be one canonical IPv4 /32 host")
+    return str(interface)
 
 
 def sign_request(secret: str, timestamp: str, event_id: str, body: bytes,
@@ -322,13 +358,9 @@ class WireGuardMeter:
         LOG.warning("managed peer suspended: %s", key[:10])
 
     def _register_peer(self, peer):
-        if not peer.allowed_ips:
-            raise ValueError("trusted registry peer is missing allowed_ips")
-        try:
-            ipaddress.ip_interface(peer.allowed_ips)
-        except ValueError:
-            raise ValueError("trusted registry contains invalid allowed_ips") from None
-        self._wg("set", self.interface, "peer", peer.public_key, "allowed-ips", peer.allowed_ips)
+        key = _validate_wireguard_public_key(peer.public_key)
+        allowed_ips = _validate_peer_allowed_ips(peer.allowed_ips)
+        self._wg("set", self.interface, "peer", key, "allowed-ips", allowed_ips)
         self.store.enable(peer.public_key)
         LOG.info("managed peer reconciled: client_id=%s", peer.client_id)
 
@@ -342,6 +374,7 @@ class WireGuardMeter:
         if not isinstance(items, list) or not isinstance(removals, list) or len(items) + len(removals) > 2000:
             raise ValueError("trusted registry response has invalid peer lists")
         peers, remove_peers = {}, {}
+        assigned_ips = set()
         for item in items:
             if not isinstance(item, dict):
                 raise ValueError("trusted registry contains an invalid peer")
@@ -349,25 +382,23 @@ class WireGuardMeter:
             state = item.get("state", "peer_registered")
             if type(client_id) is not int or client_id <= 0:
                 raise ValueError("trusted registry client_id is invalid")
-            if not isinstance(key, str) or not key.strip() or len(key) > 128:
-                raise ValueError("trusted registry public_key is invalid")
-            if not isinstance(allowed_ips, str) or len(allowed_ips) > 128:
-                raise ValueError("trusted registry allowed_ips is invalid")
+            key = _validate_wireguard_public_key(key)
+            allowed_ips = _validate_peer_allowed_ips(allowed_ips)
             if state not in ("pending_peer_registration", "peer_registered"):
                 raise ValueError("trusted registry peer state is invalid")
-            try:
-                ipaddress.ip_interface(allowed_ips)
-            except ValueError:
-                raise ValueError("trusted registry allowed_ips is invalid") from None
             if key in peers:
                 raise ValueError("trusted registry contains duplicate public keys")
+            if allowed_ips in assigned_ips:
+                raise ValueError("trusted registry contains duplicate peer IP addresses")
+            assigned_ips.add(allowed_ips)
             peers[key] = Peer(client_id, key, allowed_ips, state)
         for item in removals:
             if not isinstance(item, dict):
                 raise ValueError("trusted removal registry contains an invalid peer")
             client_id, key, state = item.get("client_id"), item.get("public_key"), item.get("state")
-            if type(client_id) is not int or client_id <= 0 or not isinstance(key, str) or not key.strip() or len(key) > 128:
+            if type(client_id) is not int or client_id <= 0:
                 raise ValueError("trusted removal registry peer identity is invalid")
+            key = _validate_wireguard_public_key(key)
             if state not in ("revoked", "suspended") or key in remove_peers or key in peers:
                 raise ValueError("trusted removal registry peer state is invalid")
             remove_peers[key] = Peer(client_id, key, "", state)

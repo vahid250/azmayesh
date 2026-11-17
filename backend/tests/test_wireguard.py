@@ -1,4 +1,5 @@
 import ipaddress
+import pytest
 from cryptography.hazmat.primitives.asymmetric import x25519
 from app.wireguard import generate_keypair
 

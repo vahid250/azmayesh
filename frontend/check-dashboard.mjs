@@ -92,8 +92,8 @@ if (!html.includes('"primary": "#34d399"') || !html.includes('"primary-container
 if (!termsClient.includes("draft_testing_only") || !termsClient.includes("تا فعال‌شدن سفارش ذخیره نمی‌شود") || !apiClient.includes("createOrder: function") || !apiClient.includes("terms_version: termsVersion")) {
   throw new Error("Terms acceptance preview and order API contract are incomplete.");
 }
-if (!apiClient.includes("X-Telegram-Init-Data") || !apiClient.includes("/v1/public/service-status") || !apiClient.includes("serviceStatus: function ()")) {
-  throw new Error("Telegram initData header missing from API client.");
+if (!apiClient.includes("/v1/auth/session") || !apiClient.includes('headers.set("Authorization", "Bearer "') || apiClient.includes("X-Telegram-Init-Data") || !apiClient.includes("/v1/public/service-status") || !apiClient.includes("serviceStatus: function ()")) {
+  throw new Error("Independent Bearer session exchange or public service-status API is missing.");
 }
 
 const forbiddenDemoClaims = [

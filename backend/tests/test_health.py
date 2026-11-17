@@ -60,7 +60,7 @@ def test_database_diagnostic_runs_only_read_only_probe_for_authenticated_request
         yield FakeSession()
 
     main.app.dependency_overrides[main.get_db] = override_db
-    main.app.dependency_overrides[main.require_authenticated_request] = lambda: {
+    main.app.dependency_overrides[main.authenticate_request] = lambda: {
         "auth_method": "test"
     }
     try:
@@ -90,7 +90,7 @@ def test_database_diagnostic_hides_database_driver_errors():
         yield FailingSession()
 
     main.app.dependency_overrides[main.get_db] = override_db
-    main.app.dependency_overrides[main.require_authenticated_request] = lambda: {
+    main.app.dependency_overrides[main.authenticate_request] = lambda: {
         "auth_method": "test"
     }
     try:
@@ -121,7 +121,7 @@ def test_public_service_status_reports_prelaunch_and_blocks_new_activations(monk
 def test_paused_service_announces_return_and_blocks_new_orders(monkeypatch):
     monkeypatch.setattr(settings, "service_mode", "paused")
     original_overrides = main.app.dependency_overrides.copy()
-    main.app.dependency_overrides[main.require_authenticated_request] = lambda: {
+    main.app.dependency_overrides[main.authenticate_request] = lambda: {
         "auth_method": "test", "user": {"id": 12345}
     }
     try:

@@ -49,7 +49,7 @@ def test_worker_database_lock_is_released_when_session_factory_raises(monkeypatc
     )
     request = Request({"type": "http", "method": "GET", "path": "/", "headers": [], "env": SimpleNamespace(HYPERDRIVE=binding)})
 
-    def failing_factory(_url):
+    def failing_factory():
         raise RuntimeError("session construction failed")
 
     monkeypatch.setattr(database, "_worker_session_factory", lambda _url: failing_factory)

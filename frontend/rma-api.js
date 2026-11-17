@@ -86,7 +86,10 @@
       payload = null;
     }
     if (!response.ok) {
-      if (response.status === 401) accessToken = null;
+      if (response.status === 401) {
+        accessToken = null;
+        sessionStorage.removeItem(EXCHANGE_STORAGE_KEY);
+      }
       const detail = payload && payload.detail;
       throw new Error(detail || ("خطای سرور: " + response.status));
     }
@@ -95,10 +98,10 @@
 
   window.RMAApi = Object.freeze({
     logout: async function () {
-      if (!accessToken) return { revoked: false };
       const token = accessToken;
       accessToken = null;
       sessionStorage.removeItem(EXCHANGE_STORAGE_KEY);
+      if (!token) return { revoked: false };
       const response = await fetch(apiBase() + "/v1/auth/logout", {
         method: "POST",
         headers: { "Authorization": "Bearer " + token, "Accept": "application/json" },

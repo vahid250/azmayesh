@@ -368,3 +368,76 @@ def test_signed_registry_rejects_duplicate_peer_ip_assignments(tmp_path):
             meter._fetch_registry()
     finally:
         store.close()
+
+
+
+def test_permanent_usage_rejection_quarantines_peer_and_preserves_event(tmp_path):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG(60, 40)
+    sent = []
+
+    def post(url, headers, body):
+        sent.append((url, headers, body))
+        return 409
+
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test",
+        secret=SECRET,
+        interface="wg0",
+        peers={PUB: Peer(7, PUB)},
+        store=store,
+        command=wg,
+        post=post,
+    )
+    try:
+        meter.run_once()
+        pending = store.pending(PUB)
+        assert pending is not None
+        assert pending.failure_status == 409
+        assert pending.bytes_used == 100
+        assert store.pending_all() == []
+        assert store.disabled(PUB)
+        assert any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
+
+        meter.run_once()
+        assert len(sent) == 1
+        assert store.pending(PUB) is not None
+    finally:
+        store.close()
+
+
+def test_transient_http_failure_removes_peer_after_grace_and_keeps_event(tmp_path):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG(20, 10)
+    sent = []
+
+    def post(url, headers, body):
+        sent.append((url, headers, body))
+        return 503
+
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test",
+        secret=SECRET,
+        interface="wg0",
+        peers={PUB: Peer(7, PUB)},
+        store=store,
+        command=wg,
+        post=post,
+        max_outage_seconds=1,
+    )
+    try:
+        meter.run_once()
+        pending = store.pending(PUB)
+        assert pending is not None
+        assert pending.failure_status is None
+        assert not store.disabled(PUB)
+
+        store.db.execute("UPDATE pending_events SET created_at=0 WHERE public_key=?", (PUB,))
+        store.db.commit()
+        meter.run_once()
+
+        assert store.pending(PUB) is not None
+        assert store.disabled(PUB)
+        assert any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
+    finally:
+        store.close()

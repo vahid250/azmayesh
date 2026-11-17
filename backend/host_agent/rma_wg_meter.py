@@ -54,6 +54,7 @@ class PendingEvent:
     bytes_used: int
     body: bytes
     created_at: float
+    failure_status: int | None = None
 
 
 def parse_wg_dump(output: str) -> dict[str, Counters]:

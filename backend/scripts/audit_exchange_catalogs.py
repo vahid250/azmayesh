@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -121,6 +122,63 @@ PARSERS = {
 }
 
 
+def _ticker_observation(client: httpx.Client, source: str, candidate: dict[str, Any]) -> dict[str, Any]:
+    """Fetch one candidate's public ticker; never treats catalog presence as a live quote."""
+    if source == "coinbase":
+        symbol = str(candidate.get("product_id") or "")
+        if not symbol or not all(part.isalnum() for part in symbol.split("-")):
+            return {"ticker_error": "invalid Coinbase product identifier"}
+        url = f"https://api.exchange.coinbase.com/products/{symbol}/ticker"
+        params = None
+    elif source == "kraken":
+        symbol = str(candidate.get("altname") or "")
+        if not symbol.isalnum():
+            return {"ticker_error": "invalid Kraken altname"}
+        url = "https://api.kraken.com/0/public/Ticker"
+        params = {"pair": symbol}
+    elif source == "bitstamp":
+        symbol = str(candidate.get("market_symbol") or "")
+        if not symbol.isalnum():
+            return {"ticker_error": "invalid Bitstamp market symbol"}
+        url = f"https://www.bitstamp.net/api/v2/ticker/{symbol.lower()}/"
+        params = None
+    else:
+        return {"ticker_error": "unsupported market-data source"}
+
+    try:
+        response = client.get(url, params=params, headers={"Accept": "application/json"})
+        received_at = datetime.now(timezone.utc).isoformat()
+        response.raise_for_status()
+        payload = response.json()
+        if source == "kraken":
+            if not isinstance(payload, dict) or payload.get("error"):
+                raise ValueError("Kraken ticker response contains an error")
+            result = payload.get("result")
+            if not isinstance(result, dict) or len(result) != 1:
+                raise ValueError("Kraken ticker did not return exactly one market")
+            ticker = next(iter(result.values()))
+            bid, ask = ticker["b"][0], ticker["a"][0]
+        else:
+            if not isinstance(payload, dict):
+                raise ValueError("ticker response is not an object")
+            bid, ask = payload.get("bid"), payload.get("ask")
+        bid_value, ask_value = Decimal(str(bid)), Decimal(str(ask))
+        if not bid_value.is_finite() or not ask_value.is_finite() or bid_value <= 0 or ask_value < bid_value:
+            raise ValueError("ticker returned invalid bid/ask values")
+        return {
+            "ticker_http_status": response.status_code,
+            "ticker_retrieved_at": received_at,
+            "bid": format(bid_value, "f"),
+            "ask": format(ask_value, "f"),
+        }
+    except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError, InvalidOperation) as exc:
+        return {
+            "ticker_http_status": getattr(locals().get("response"), "status_code", None),
+            "ticker_retrieved_at": datetime.now(timezone.utc).isoformat(),
+            "ticker_error": str(exc)[:240],
+        }
+
+
 def fetch_catalogs(client: httpx.Client) -> dict[str, Any]:
     report: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -135,12 +193,15 @@ def fetch_catalogs(client: httpx.Client) -> dict[str, Any]:
         response.raise_for_status()
         raw = response.content
         payload = response.json()
+        candidates = PARSERS[source](payload)
+        for candidate in candidates:
+            candidate.update(_ticker_observation(client, source, candidate))
         report["sources"][source] = {
             "url": url,
             "http_status": response.status_code,
             "retrieved_at": datetime.now(timezone.utc).isoformat(),
             "response_sha256": hashlib.sha256(raw).hexdigest(),
-            "candidate_markets": PARSERS[source](payload),
+            "candidate_markets": candidates,
         }
     return report
 

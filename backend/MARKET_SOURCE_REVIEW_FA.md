@@ -11,9 +11,9 @@
 
 | منبع | USDT/USD | USDC/USD | نتیجه قابل اتکا |
 |---|---|---|---|
-| Coinbase Exchange | صفحه رسمی بازارها، USDT-USD را با وضعیت Full Trading نشان می‌دهد | در خروجی قابل مشاهده صفحه، USDC-EUR دیده می‌شود؛ وجود یا نبود USDC-USD از این خروجی محدود قابل نتیجه‌گیری نیست | USDT-USD نامزد بررسی زنده است؛ USDC/USD هنوز تأیید نشده |
-| Kraken | مستندات رسمی، AssetPairs را منبع فهرست کامل جفت‌ها معرفی می‌کند؛ ردیف زنده USDT/USD در این بررسی دریافت نشده | همان محدودیت؛ ردیف زنده USDC/USD دریافت نشده | هیچ نماد REST یا WebSocket را حدس نزنیم؛ ابتدا AssetPairs را بخوانیم و altname/wsname/base/quote را ثبت کنیم |
-| Bitstamp | منبع داده ثانویه CoinPaprika، USDT/USD را گزارش می‌کند؛ این مدرک جای پاسخ رسمی Bitstamp را نمی‌گیرد | در همان منبع ثانویه، USDC/EUR و BTC/USDC دیده می‌شود؛ USDC/USD تأیید نشده | تا دریافت مجوز تجاری و بررسی رسمی، از داده Bitstamp در محصول استفاده نشود |
+| Coinbase Exchange | ممیزی زنده API رسمی: `USDT-USD`، وضعیت `online` و `trading_disabled=false` | در پاسخ کامل فهرست محصولات، کاندید مستقیم `USDC/USD` دیده نشد | USDT/USD کاندید زنده است؛ USDC/USD فعلاً در Coinbase قابل استفاده نیست |
+| Kraken | ممیزی زنده: `altname=USDTUSD`، `wsname=USDT/USD`، `base=USDT`، `quote=ZUSD`، وضعیت `online` | ممیزی زنده: `altname=USDCUSD`، `wsname=USDC/USD`، `base=USDC`، `quote=ZUSD`، وضعیت `online` | `ZUSD` alias داخلی USD در پاسخ است؛ نماد و جهت باید همراه raw fields حفظ و در تست Ticker تأیید شوند |
+| Bitstamp | ممیزی زنده: `usdtusd` با `trading=Enabled` و `matching=Enabled` | ممیزی زنده: `usdcusd` با `trading=Enabled` و `matching=Enabled` | وجود و وضعیت بازار تأیید شد؛ مصرف تجاری همچنان تا تعیین تکلیف کتبی مجوز ممنوع است |
 
 ## نکات رسمی و فنی
 
@@ -27,13 +27,30 @@
 
 مستندات رسمی Kraken می‌گوید REST AssetPairs همه جفت‌های موجود و شکل‌های مختلف نام‌گذاری را ارائه می‌کند؛ از جمله کلید REST، altname و wsname و اجزای base و quote. نماد WebSocket با نماد REST ممکن است متفاوت باشد.
 
-برای هر دارایی، فقط ردیفی قابل قبول است که base و quote دقیقاً جفت مستقیم با USD باشند. مقدارهای alias و شناسه‌های داخلی باید همراه پاسخ خام ذخیره شوند. سپس Ticker یا feed عمومی همان نماد برای bid/ask و زمان مشاهده بررسی شود. صفحه قیمت عمومی USDC به‌تنهایی اثبات وجود جفت اسپات USDC/USD نیست.
+ممیزی زنده ۱۸ نوامبر ۲۰۲۶ دو بازار مستقیم را پیدا کرد: `USDTZUSD` با `altname=USDTUSD` و `wsname=USDT/USD`، و `USDCUSD` با `altname=USDCUSD` و `wsname=USDC/USD`. در هر دو، `quote=ZUSD` و `status=online` بود. `ZUSD` به‌عنوان alias داخلی USD حفظ می‌شود؛ اسکریپت هیچ نمادی را خودکار approve نمی‌کند. درخواست Ticker برای همان altname باید bid/ask واقعی را نیز تأیید کند.
 
 ### Bitstamp
 
 مستندات رسمی Bitstamp endpoint فهرست بازارها را با market_symbol، base_currency، counter_currency، trading و matching معرفی می‌کند. طبق changelog رسمی 2026-11-09، trading به‌تنهایی وضعیت اجرای معامله را تضمین نمی‌کند: وضعیت عملیاتی کامل باید trading=Enabled و matching=Enabled باشد.
 
-مستندات رسمی همچنین تصریح می‌کند شرکت‌هایی که داده بازار Bitstamp را برای مقاصد تجاری خود استفاده می‌کنند باید با partners@bitstamp.net تماس بگیرند و توافق‌نامه مجوز داده تجاری دریافت و امضا کنند. بنابراین حتی اگر نماد بازار در منبع ثانویه دیده شود، تا تعیین تکلیف کتبی مجوز، Bitstamp منبع قابل استفاده در محصول R&MA محسوب نمی‌شود.
+ممیزی زنده هر دو بازار `usdtusd` و `usdcusd` را با `trading=Enabled` و `matching=Enabled` پیدا کرد. بااین‌حال مستندات رسمی تصریح می‌کند شرکت‌هایی که داده بازار Bitstamp را برای مقاصد تجاری مصرف می‌کنند باید با `partners@bitstamp.net` تماس بگیرند و توافق‌نامه مجوز داده تجاری دریافت و امضا کنند. بنابراین وجود بازار و فعال‌بودن matching به‌تنهایی مجوز استفاده در محصول R&MA نیست.
+
+## نتایج ممیزی زنده کاتالوگ رسمی — ۱۸ نوامبر ۲۰۲۶
+
+اسکریپت فقط‌خواندنی `backend/scripts/audit_exchange_catalogs.py` در GitHub Actions اجرا شد:
+- اجرای ممیزی: [44264845244](https://github.com/vahid250/azmayesh/actions/runs/44264845244) — نتیجه `success`.
+- زمان تولید گزارش: `2026-11-18T08:11:26Z`.
+- هر سه endpoint کاتالوگ با HTTP 200 پاسخ دادند.
+- Coinbase: یک کاندید مستقیم USD برای دارایی‌های هدف؛ `USDT-USD`.
+- Kraken: دو کاندید مستقیم USD؛ `USDTZUSD` و `USDCUSD`. فیلدهای alias/جهت در گزارش حفظ شده‌اند.
+- Bitstamp: دو کاندید؛ `usdtusd` و `usdcusd`، هر دو با trading و matching فعال.
+- SHA-256 پاسخ‌های خام:
+  - Coinbase: `c24715e9b41be048a1434313df2e18a62810e7589940c97a49ce1ae4f1f2eacf`
+  - Kraken: `454e651a30413fc1423fb383f3bf8fc87830bff74672c848b256fb6caaee4876`
+  - Bitstamp: `f29aac0058941cbd8ae2e965dd1cf4816731853c6e85cad278dd44aba2b8b1a3`
+- گزارش JSON به‌عنوان artifact با نام `rma-market-catalog-audit` نگهداری شده است.
+
+این اجرا فقط وجود بازار و وضعیت کاتالوگ را بررسی کرد؛ هنوز ticker bid/ask، عمق بازار، spread، مجوز Bitstamp و تأیید انسانی نهایی نیست. بنابراین هیچ mapping یا PaymentAsset فعال نمی‌شود.
 
 ## شرط‌های تأیید هر نگاشت
 

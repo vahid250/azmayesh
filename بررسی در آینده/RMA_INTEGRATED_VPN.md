@@ -225,3 +225,18 @@ backend مصرف حسابداری را از quota بالاتر نمی‌برد �
 یافتهٔ کلیدی: تابع status فعلی عمداً handshake و counter زنده را تأیید نمی‌کند؛ parser میزبان نیز timestamp آخرین handshake را هنوز نادیده می‌گیرد. طرح جدید، وضعیت‌های provisioned/registered/handshake/traffic/verified/stale/offline/revoked را از هم جدا می‌کند، telemetry را در قرارداد Host Agent V2 با peer_ref و agent_id نسخه‌دار می‌سازد و از نمایش «متصل» بر اساس پاسخ provisioning یا counter تاریخی جلوگیری می‌کند.
 
 نکتهٔ محصولی: handshake تازه و عبور بسته‌ها، سلامت تونل را نشان می‌دهد؛ به‌تنهایی ثابت نمی‌کند سرویس Telegram یا ورود حساب کاربر در دسترس است. متن رابط باید دقیقاً همین مرز را رعایت کند. این سند فقط طراحی است؛ parser، API، مدل، migration، UI و میزبان تغییر نکرده‌اند.
+
+
+## بررسی سازگاری Telegram، Private DNS و سهمیهٔ kernel-level
+
+سند مستقل مرحلهٔ بعد ثبت شد:
+
+[R&MA Integrated VPN — Telegram, DNS & Kernel Quota Design](RMA_INTEGRATED_VPN_TELEGRAM_DNS_KERNEL_QUOTA_DESIGN_FA.md)
+
+تصمیم پیشنهادی نسخهٔ اول: فقط Telegram Android stable رسمی با package `org.telegram.messenger` هدف باشد؛ beta، Telegram X و forkها تا تأیید جداگانه خارج از پشتیبانی بمانند. Google Play Services/FCM به allow-list اضافه نشود؛ اعلان‌ها به‌عنوان مسیر جداگانه آزمایش شوند و به کاربر گفته شود تحویل push ممکن است تابع زیرساخت سیستم باشد.
+
+یافتهٔ مهم DNS: Android system resolver باید حفظ شود و global Private DNS کاربر دستکاری نشود. در حالت strict، مستند Android می‌گوید resolver باید هم از داخل و هم از خارج VPN قابل دسترسی باشد؛ ناسازگاری باید به وضعیت خطا/fail-closed منجر شود، نه fallback ناامن یا ادعای عدم نشت.
+
+گزینهٔ اول آزمایشگاهی برای quota سخت‌گیرانه، nftables named quota object مشترک در مسیر forward برای هر دو جهت و همهٔ peerهای یک entitlement است. کد kernel از شمارندهٔ atomic64 و skb length استفاده می‌کند و packet عبورکننده از سقف باید drop شود؛ اما تفاوت نقطهٔ شمارش با WireGuard/backend counters، flowtable/offload، reboot و restore ruleset باید روی kernel واقعی آزمایش شود. eBPF فعلاً گزینهٔ دوم است، نه انتخاب خودکار.
+
+هیچ کد Android، تنظیم DNS، nftables rule، kernel module، eBPF، migration یا سرور تغییر نکرده است. مرحلهٔ بعد از این سند: تبدیل معیارها به test plan آزمایشگاهی و بررسی قابلیت‌های kernel/nftables روی میزبان مجاز، بدون نصب یا تغییر تنظیمات production.

@@ -420,6 +420,35 @@ def list_active_plans(db: Session = Depends(get_db)):
     ]
 
 
+@app.get("/api/v1/public/payment-assets")
+def public_payment_assets(db: Session = Depends(get_db)):
+    """List only enabled payment assets with all three reviewed direct-USD market mappings."""
+    assets = db.execute(
+        select(PaymentAsset)
+        .where(PaymentAsset.is_enabled.is_(True))
+        .order_by(PaymentAsset.currency.asc(), PaymentAsset.network.asc())
+    ).scalars().all()
+    available = []
+    for asset in assets:
+        try:
+            load_enabled_market_specs(
+                db,
+                payment_asset_id=asset.id,
+                payment_currency=asset.currency,
+            )
+        except ValueError:
+            # An enabled asset without complete, reviewed source mappings is not
+            # selectable in the customer-facing rate panel.
+            continue
+        available.append({
+            "currency": asset.currency,
+            "network": asset.network,
+            "asset_type": asset.asset_type,
+            "decimals": asset.decimals,
+        })
+    return {"assets": available}
+
+
 @app.get("/api/v1/public/payment-rate")
 async def public_payment_rate(
     currency: str,

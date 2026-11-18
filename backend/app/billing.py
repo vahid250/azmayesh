@@ -50,6 +50,7 @@ def create_order(
         idempotency_key=key,
         amount_minor=plan.amount_minor,
         currency=plan.currency,
+        price_usd_minor=plan.price_usd_minor,
         quota_bytes=plan.quota_bytes,
         max_devices=plan.max_devices,
         duration_days=plan.duration_days,

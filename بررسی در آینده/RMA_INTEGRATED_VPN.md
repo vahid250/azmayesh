@@ -131,6 +131,14 @@
 
 این سند صرفاً طراحی است؛ endpoint، migration، مدل دیتابیس یا کد عملیاتی ایجاد نشده است. پیشنهادهای اصلی عبارت‌اند از اعتبارسنجی server-side دادهٔ خام Telegram Mini App، handoff code کوتاه‌عمر و یک‌بارمصرف، کلید خصوصی تولیدشده روی دستگاه، اثبات مالکیت کلید با challenge، grant سمت سرور و ایجاد peer فقط از طریق backend/host agent مجاز.
 
+## طراحی مدل Device و peer inventory
+
+سند مستقل طراحی مدل دستگاه، Pairing، ProvisioningGrant، AuditEvent و پیوند با Entitlement، WireGuard، UsageRecord و host agent ثبت شد:
+
+[R&MA Integrated VPN — Device Model Design](RMA_INTEGRATED_VPN_DEVICE_MODEL_DESIGN_FA.md)
+
+یافتهٔ تعیین‌کننده: مدل فعلی `WireGuardClient` private key و config رمز‌شدهٔ سمت backend را اجباری می‌کند؛ بنابراین برای اپ native با private key محلی نباید مستقیم reuse شود. پیشنهاد معماری، Device/Pairing/Grant مستقل و یک peer inventory مشترکِ بدون private key است که قرارداد host agent را با شناسهٔ پایدار و namespace‌دار نسخه‌دار می‌کند. این تصمیم هنوز طراحی است و migration اجرا نشده است.
+
 ## معماری هدف
 
 Mini App نقش control plane و رابط مدیریت را دارد؛ اپ همراه بومی Android نقش data plane و ایجادکنندهٔ تونل را دارد؛ WireGuard gateway ترافیک را عبور می‌دهد و host agent مصرف را از سمت سرور می‌سنجد.

@@ -213,6 +213,36 @@ class PaymentAsset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
+class ExchangeMarketMapping(Base):
+    """Reviewed spot-market symbol and orientation for one payment asset/source."""
+    __tablename__ = "exchange_market_mappings"
+    __table_args__ = (
+        UniqueConstraint("payment_asset_id", "source", name="uq_market_mapping_asset_source"),
+        CheckConstraint(
+            "source IN ('coinbase', 'kraken', 'bitstamp')",
+            name="ck_market_mapping_supported_source",
+        ),
+        CheckConstraint(
+            "market_base_currency <> market_quote_currency",
+            name="ck_market_mapping_distinct_currencies",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payment_asset_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_assets.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    market_symbol: Mapped[str] = mapped_column(String(64), nullable=False)
+    market_base_currency: Mapped[str] = mapped_column(String(12), nullable=False)
+    market_quote_currency: Mapped[str] = mapped_column(String(12), nullable=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
 class PaymentIntent(Base):
     """Immutable 15-minute payment quote; settlement is a separate later state."""
     __tablename__ = "payment_intents"

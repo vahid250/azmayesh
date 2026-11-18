@@ -139,6 +139,14 @@
 
 یافتهٔ تعیین‌کننده: مدل فعلی `WireGuardClient` private key و config رمز‌شدهٔ سمت backend را اجباری می‌کند؛ بنابراین برای اپ native با private key محلی نباید مستقیم reuse شود. پیشنهاد معماری، Device/Pairing/Grant مستقل و یک peer inventory مشترکِ بدون private key است که قرارداد host agent را با شناسهٔ پایدار و namespace‌دار نسخه‌دار می‌کند. این تصمیم هنوز طراحی است و migration اجرا نشده است.
 
+## طراحی قرارداد نسخه‌دار Host Agent
+
+سند مستقل طراحی قرارداد V2 بین backend و میزبان WireGuard ثبت شد:
+
+[R&MA Integrated VPN — Host Agent V2 Design](RMA_INTEGRATED_VPN_HOST_AGENT_V2_DESIGN_FA.md)
+
+این طراحی بر پایهٔ قرارداد واقعی فعلی انجام شده است: V1 با `client_id` عددی و مدل legacy کار می‌کند؛ برای Integrated VPN باید V2 نسخه‌دار با `peer_ref` پایدار، هویت مستقل هر agent، registry revision، پاسخ احرازشده، usage attribution و ACK idempotent طراحی شود. V1 بدون تغییر برای legacy باقی می‌ماند؛ مهاجرت فقط پس از shadow test و آزمایشگاه مجاز است.
+
 ## معماری هدف
 
 Mini App نقش control plane و رابط مدیریت را دارد؛ اپ همراه بومی Android نقش data plane و ایجادکنندهٔ تونل را دارد؛ WireGuard gateway ترافیک را عبور می‌دهد و host agent مصرف را از سمت سرور می‌سنجد.

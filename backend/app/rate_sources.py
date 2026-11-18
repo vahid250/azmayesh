@@ -50,22 +50,25 @@ def parse_bitstamp_midpoint(payload: dict) -> Decimal:
     return _decimal_midpoint(payload.get("bid"), payload.get("ask"))
 
 
-async def _fetch_coinbase(client: httpx.AsyncClient, product_id: str, observed_at: datetime) -> RateObservation:
+async def _fetch_coinbase(client: httpx.AsyncClient, product_id: str, observed_at: datetime | None) -> RateObservation:
     response = await client.get(COINBASE_TICKER_URL.format(product_id=product_id))
     response.raise_for_status()
-    return RateObservation("coinbase", parse_coinbase_midpoint(response.json()), observed_at)
+    received_at = observed_at or datetime.now(timezone.utc)
+    return RateObservation("coinbase", parse_coinbase_midpoint(response.json()), received_at)
 
 
-async def _fetch_kraken(client: httpx.AsyncClient, pair: str, observed_at: datetime) -> RateObservation:
+async def _fetch_kraken(client: httpx.AsyncClient, pair: str, observed_at: datetime | None) -> RateObservation:
     response = await client.get(KRAKEN_TICKER_URL, params={"pair": pair})
     response.raise_for_status()
-    return RateObservation("kraken", parse_kraken_midpoint(response.json()), observed_at)
+    received_at = observed_at or datetime.now(timezone.utc)
+    return RateObservation("kraken", parse_kraken_midpoint(response.json()), received_at)
 
 
-async def _fetch_bitstamp(client: httpx.AsyncClient, market_symbol: str, observed_at: datetime) -> RateObservation:
+async def _fetch_bitstamp(client: httpx.AsyncClient, market_symbol: str, observed_at: datetime | None) -> RateObservation:
     response = await client.get(BITSTAMP_TICKER_URL.format(market_symbol=market_symbol))
     response.raise_for_status()
-    return RateObservation("bitstamp", parse_bitstamp_midpoint(response.json()), observed_at)
+    received_at = observed_at or datetime.now(timezone.utc)
+    return RateObservation("bitstamp", parse_bitstamp_midpoint(response.json()), received_at)
 
 
 def _primary_spread_bps(a: Decimal, b: Decimal) -> int:
@@ -96,7 +99,9 @@ async def fetch_three_exchange_observations(
         raise ValueError("explicit Coinbase, Kraken and Bitstamp market mappings are required")
     if max_primary_divergence_bps < 0:
         raise ValueError("primary divergence threshold must be nonnegative")
-    observed_at = now or datetime.now(timezone.utc)
+    # Tests may inject a fixed clock. In production, timestamp each observation
+    # when its HTTP response has arrived, not when the request batch was started.
+    observed_at = now
 
     async def fetch_with(active_client: httpx.AsyncClient) -> list[RateObservation]:
         backup_task = asyncio.create_task(_fetch_bitstamp(active_client, market, observed_at))

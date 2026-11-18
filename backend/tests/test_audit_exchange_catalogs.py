@@ -1,6 +1,6 @@
 import httpx
 
-from scripts.audit_exchange_catalogs import _kraken_candidates, _ticker_observation
+from scripts.audit_exchange_catalogs import _kraken_candidates, _quality_summary, _ticker_observation
 
 
 def test_kraken_audit_keeps_only_exact_direct_usd_candidates():
@@ -72,3 +72,84 @@ def test_ticker_audit_rejects_invalid_bid_ask():
         row = _ticker_observation(client, "coinbase", {"product_id": "USDT-USD"})
 
     assert "ticker_error" in row
+
+
+def test_quality_summary_normalizes_direct_usd_pairs_and_reports_spreads():
+    sources = {
+        "coinbase": {
+            "candidate_markets": [
+                {
+                    "base_currency": "USDT",
+                    "quote_currency": "USD",
+                    "bid": "0.99889",
+                    "ask": "0.99890",
+                    "ticker_http_status": 200,
+                    "ticker_retrieved_at": "2026-11-18T08:13:33Z",
+                }
+            ]
+        },
+        "kraken": {
+            "candidate_markets": [
+                {
+                    "canonical_base_currency": "USDT",
+                    "canonical_quote_currency": "USD",
+                    "bid": "0.99886",
+                    "ask": "0.99887",
+                    "ticker_http_status": 200,
+                    "ticker_retrieved_at": "2026-11-18T08:13:33Z",
+                }
+            ]
+        },
+        "bitstamp": {
+            "candidate_markets": [
+                {
+                    "base_currency": "USDT",
+                    "counter_currency": "USD",
+                    "bid": "0.99885",
+                    "ask": "0.99886",
+                    "ticker_http_status": 200,
+                    "ticker_retrieved_at": "2026-11-18T08:13:33Z",
+                }
+            ]
+        },
+    }
+
+    summary = _quality_summary(sources)
+
+    assert summary["USDT"]["valid_ticker_sources"] == ["coinbase", "kraken", "bitstamp"]
+    assert len(summary["USDT"]["pairwise_divergence"]) == 3
+    assert summary["USDT"]["candidate_only"] is True
+    assert summary["USDT"]["mapping_approved"] is False
+    assert summary["USDT"]["observations"][0]["spread_bps"] == "0.1001"
+
+
+def test_quality_summary_excludes_ticker_errors_and_cross_pairs():
+    sources = {
+        "coinbase": {
+            "candidate_markets": [
+                {
+                    "base_currency": "ADA",
+                    "quote_currency": "USDC",
+                    "bid": "0.5",
+                    "ask": "0.6",
+                    "ticker_http_status": 200,
+                }
+            ]
+        },
+        "kraken": {
+            "candidate_markets": [
+                {
+                    "canonical_base_currency": "USDC",
+                    "canonical_quote_currency": "USD",
+                    "ticker_http_status": 200,
+                    "ticker_error": "ticker unavailable",
+                }
+            ]
+        },
+        "bitstamp": {"candidate_markets": []},
+    }
+
+    summary = _quality_summary(sources)
+
+    assert summary["USDC"]["valid_ticker_sources"] == []
+    assert summary["USDC"]["pairwise_divergence"] == []

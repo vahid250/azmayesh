@@ -28,6 +28,8 @@ class LockedQuote:
     source_snapshot: list[dict]
     selected_sources: tuple[str, str]
     used_backup_source: bool
+    display_rate_source: str
+    display_rate_usd_per_unit: Decimal
 
 
 def _utc(value: datetime) -> datetime:
@@ -112,6 +114,20 @@ def build_locked_quote(
     selected_rates = [normalized[name][0] for name in selected]
     consensus_rate = sum(selected_rates, Decimal(0)) / Decimal(2)
     selected_spread = _spread_bps(selected_rates[0], selected_rates[1])
+
+    # The customer-facing display is the highest USD value per one payment
+    # unit, i.e. the lowest payment-units-per-USD observation. Exclude any
+    # fresh source that is still an outlier versus the accepted consensus.
+    display_eligible = {
+        source: rate
+        for source, (rate, _observed) in normalized.items()
+        if _spread_bps(rate, consensus_rate) <= max_source_divergence_bps
+    }
+    if not display_eligible:
+        raise ValueError("no market source is eligible for customer-facing display")
+    display_rate_source = min(display_eligible, key=lambda source: (display_eligible[source], source))
+    display_rate_usd_per_unit = Decimal(1) / display_eligible[display_rate_source]
+
     margin_multiplier = Decimal(10_000 + admin_margin_bps) / Decimal(10_000)
     usd_amount = Decimal(price_usd_minor) / Decimal(100)
     atomic_amount = usd_amount * consensus_rate * margin_multiplier * (Decimal(10) ** payment_decimals)
@@ -124,6 +140,9 @@ def build_locked_quote(
             "observed_at": observed.isoformat(),
             "selected_for_quote": source in selected,
             "backup_source": source not in (first, second),
+            "usd_per_payment_unit": format(Decimal(1) / rate, "f"),
+            "display_eligible": source in display_eligible,
+            "best_display_rate": source == display_rate_source,
         }
         for source, (rate, observed) in sorted(normalized.items())
     ]
@@ -136,6 +155,8 @@ def build_locked_quote(
         source_snapshot=snapshot,
         selected_sources=selected,
         used_backup_source=used_backup,
+        display_rate_source=display_rate_source,
+        display_rate_usd_per_unit=display_rate_usd_per_unit,
     )
 
 

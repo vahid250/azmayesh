@@ -226,6 +226,10 @@ class ExchangeMarketMapping(Base):
             "market_base_currency <> market_quote_currency",
             name="ck_market_mapping_distinct_currencies",
         ),
+        CheckConstraint(
+            "is_enabled = false OR reviewed_at IS NOT NULL",
+            name="ck_market_mapping_enabled_requires_review",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

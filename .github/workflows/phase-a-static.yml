@@ -1,0 +1,41 @@
+name: Phase A static checks
+
+on:
+  push:
+    branches:
+      - rebuild/rma-hardening-from-dashboard
+    paths:
+      - "lab/phase-a/**"
+      - ".github/workflows/phase-a-static.yml"
+  pull_request:
+    paths:
+      - "lab/phase-a/**"
+      - ".github/workflows/phase-a-static.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check Bash syntax
+        shell: bash
+        run: |
+          bash -n lab/phase-a/phase-a-lab.sh
+          bash -n lab/phase-a/phase-a-traffic-test.sh
+
+      - name: Check Python syntax
+        shell: bash
+        run: |
+          PYTHONPYCACHEPREFIX="${RUNNER_TEMP}/pycache" python -m py_compile lab/phase-a/traffic.py

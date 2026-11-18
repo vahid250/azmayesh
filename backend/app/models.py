@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
@@ -179,7 +180,7 @@ class ExchangeRate(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     base_currency: Mapped[str] = mapped_column(String(12), nullable=False)
     quote_currency: Mapped[str] = mapped_column(String(12), nullable=False)
-    units_per_base: Mapped[object] = mapped_column(Numeric(28, 12), nullable=False)
+    units_per_base: Mapped[Decimal] = mapped_column(Numeric(28, 12), nullable=False)
     source: Mapped[str] = mapped_column(String(40), nullable=False)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

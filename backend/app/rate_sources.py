@@ -6,7 +6,7 @@ selection never waits for a second sequential network round-trip.
 """
 import asyncio
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_UP
 
 import httpx
 
@@ -69,7 +69,7 @@ async def _fetch_bitstamp(client: httpx.AsyncClient, market_symbol: str, observe
 
 def _primary_spread_bps(a: Decimal, b: Decimal) -> int:
     midpoint = (a + b) / Decimal(2)
-    return int((abs(a - b) / midpoint * Decimal(10_000)).to_integral_value(rounding="ROUND_UP"))
+    return int((abs(a - b) / midpoint * Decimal(10_000)).to_integral_value(rounding=ROUND_UP))
 
 
 async def fetch_three_exchange_observations(

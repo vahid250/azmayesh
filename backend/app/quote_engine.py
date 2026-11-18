@@ -118,7 +118,9 @@ def build_locked_quote(
 def trusted_payment_started_in_window(
     *,
     first_seen_at: datetime,
+    quote_issued_at: datetime,
     quote_expires_at: datetime,
 ) -> bool:
     """Use trusted provider/node first-seen time, never a client clock or claim."""
-    return _utc(first_seen_at) <= _utc(quote_expires_at)
+    first_seen = _utc(first_seen_at)
+    return _utc(quote_issued_at) <= first_seen <= _utc(quote_expires_at)

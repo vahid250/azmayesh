@@ -47,6 +47,8 @@ class Plan(Base):
     title: Mapped[str] = mapped_column(String(100), nullable=False)
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     currency: Mapped[str] = mapped_column(String(12), nullable=False)
+    # New USD list price; NULL preserves historical plans until explicitly repriced.
+    price_usd_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     quota_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     max_devices: Mapped[int] = mapped_column(Integer, nullable=False)
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -71,6 +73,8 @@ class Order(Base):
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     currency: Mapped[str] = mapped_column(String(12), nullable=False)
+    # Immutable USD price snapshot; NULL only for legacy orders predating USD pricing.
+    price_usd_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     quota_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     max_devices: Mapped[int] = mapped_column(Integer, nullable=False)
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False)

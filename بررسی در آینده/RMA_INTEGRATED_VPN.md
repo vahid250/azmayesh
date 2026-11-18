@@ -188,3 +188,16 @@ Mini App نقش control plane و رابط مدیریت را دارد؛ اپ هم
 - Android VpnService: https://developer.android.com/reference/android/net/VpnService
 - Google Play VPN policy: https://support.google.com/googleplay/android-developer/answer/16909972
 - WireGuard: https://www.wireguard.com/
+
+
+## طراحی شبکه، DNS و Fail-Closed برای Telegram-only
+
+سند مستقل طراحی مسیر IPv4/IPv6، DNS، allow-list اندروید و رفتار قطع تونل ثبت شد:
+
+[R&MA Integrated VPN — Network, DNS & Fail-Closed Design](RMA_INTEGRATED_VPN_NETWORK_DNS_FAIL_CLOSED_DESIGN_FA.md)
+
+یافتهٔ تعیین‌کننده از مستندات رسمی Android: per-app allow-list می‌تواند فقط Telegram را وارد VPN کند و سایر برنامه‌ها را روی شبکهٔ عادی نگه دارد؛ خانوادهٔ آدرسی که برای VPN هیچ address/route/DNS ندارد، طبق API مستند Android مسدود می‌شود. بنابراین پیشنهاد نسخهٔ اول IPv4-only با مسدودسازی IPv6 Telegram است تا پشتیبانی end-to-end IPv6 کامل شود.
+
+محدودیت مهم: اگر TUN برقرار باشد اما gateway/WireGuard قطع شود، کلاینت می‌تواند بسته‌های Telegram را داخل TUN drop کند و از direct fallback جلوگیری کند. اما اگر خود VpnService متوقف/crash/revoke شود، Android شبکه را restore می‌کند؛ per-app allow-list به‌تنهایی fail-closed دائمی برای Telegram تضمین نمی‌کند. Always-on lockdown می‌تواند ترافیک خارج VPN را مسدود کند، ولی با نیاز آنلاین‌ماندن سایر برنامه‌ها تعارض دارد. این محدودیت باید در UX و معیارهای پذیرش شفاف بماند.
+
+این سند فقط طراحی است؛ هیچ کد، migration، تنظیم gateway/firewall/DNS یا سرور تغییر نکرده است. مرحلهٔ بعد: بررسی Private DNS و package/push compatibility روی دستگاه آزمایشگاهی، سپس ممیزی جداگانهٔ دقت metering و overshoot.

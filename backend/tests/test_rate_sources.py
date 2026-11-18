@@ -35,14 +35,14 @@ def test_rate_parsers_reject_invalid_market_data():
         parse_bitstamp_midpoint({"bid": "2", "ask": "1"})
 
 
-def test_fetches_all_three_sources_concurrently():
+def test_disagreement_uses_already_started_backup_source():
     async def run_test():
         def handler(request):
             if request.url.host == "api.exchange.coinbase.com":
-                return httpx.Response(200, json={"bid": "0.999", "ask": "1.001"})
+                return httpx.Response(200, json={"bid": "1", "ask": "1"})
             if request.url.host == "api.kraken.com":
-                return httpx.Response(200, json={"error": [], "result": {"USDTUSD": {"b": ["0.999", "10"], "a": ["1.001", "10"]}}})
-            return httpx.Response(200, json={"bid": "0.998", "ask": "1.002"})
+                return httpx.Response(200, json={"error": [], "result": {"USDTUSD": {"b": ["1.1", "10"], "a": ["1.1", "10"]}}})
+            return httpx.Response(200, json={"bid": "1.001", "ask": "1.001"})
 
         client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         try:
@@ -62,7 +62,35 @@ def test_fetches_all_three_sources_concurrently():
     asyncio.run(run_test())
 
 
-def test_primary_failure_blocks_quote_but_backup_failure_is_returned_as_missing():
+def test_agreeing_primary_sources_do_not_wait_for_backup():
+    async def run_test():
+        async def handler(request):
+            if request.url.host == "api.exchange.coinbase.com":
+                return httpx.Response(200, json={"bid": "1", "ask": "1"})
+            if request.url.host == "api.kraken.com":
+                return httpx.Response(200, json={"error": [], "result": {"USDTUSD": {"b": ["1", "10"], "a": ["1", "10"]}}})
+            await asyncio.sleep(0.5)
+            return httpx.Response(200, json={"bid": "1", "ask": "1"})
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            rows = await asyncio.wait_for(
+                fetch_three_exchange_observations(
+                    coinbase_product_id="USDT-USD",
+                    kraken_pair="USDTUSD",
+                    bitstamp_market_symbol="usdtusd",
+                    client=client,
+                ),
+                timeout=0.25,
+            )
+        finally:
+            await client.aclose()
+        assert [row.source for row in rows] == ["coinbase", "kraken"]
+
+    asyncio.run(run_test())
+
+
+def test_primary_failure_blocks_quote_but_backup_failure_is_tolerated_if_primaries_agree():
     async def run_test():
         def handler(request):
             if request.url.host == "api.exchange.coinbase.com":

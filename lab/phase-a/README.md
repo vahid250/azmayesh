@@ -23,6 +23,10 @@ sudo ./phase-a-lab.sh down
 
 The initial quota is 64 kbytes. A and B each attempt 30 UDP datagrams with 1200-byte payloads. A should fit within the cap; B should be constrained by the same named quota. C is tested against a separately reset quota and should deliver all 30 packets.
 
+The test waits for an explicit UDP-sink ready file after the socket is bound, rather than relying only on a fixed startup delay. The receiver still has a bounded two-second run window.
+
 The test deliberately uses broad packet-count acceptance bounds to detect shared-vs-independent behavior, not to certify exact quota byte accounting. UDP sink payload bytes are not the same accounting layer as nftables skb bytes. Exact boundary, packet overhead, bidirectional accounting, concurrency, TCP, MTU, and overshoot remain separate tests.
+
+The `phase-a-static.yml` workflow checks Bash and Python syntax when Phase A files change. Static CI does not execute network namespaces or nftables rules.
 
 A passing local smoke test is not a production approval.

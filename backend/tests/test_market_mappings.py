@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -153,3 +154,20 @@ def test_fetcher_normalizes_each_exchange_using_its_own_market_orientation(monke
         Decimal("2"),
         Decimal("0.5"),
     ]
+
+
+
+def test_database_rejects_enabled_mapping_without_review_timestamp(db):
+    session, asset = db
+    session.add(ExchangeMarketMapping(
+        payment_asset_id=asset.id,
+        source="coinbase",
+        market_symbol="USDT-USD",
+        market_base_currency="USDT",
+        market_quote_currency="USD",
+        is_enabled=True,
+        reviewed_at=None,
+    ))
+    with pytest.raises(IntegrityError):
+        session.commit()
+    session.rollback()

@@ -10,6 +10,7 @@ from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+import httpx
 
 from app.models import ExchangeMarketMapping
 from app.quote_engine import RateObservation
@@ -89,6 +90,7 @@ async def fetch_payment_asset_observations(
     mappings: Iterable[ExchangeMarketSpec],
     now: datetime | None = None,
     timeout_seconds: float = 3.0,
+    client: httpx.AsyncClient | None = None,
 ) -> list[RateObservation]:
     """Fetch the three explicitly mapped markets and normalize their orientations."""
     currency = payment_currency.strip().upper()
@@ -109,6 +111,7 @@ async def fetch_payment_asset_observations(
         bitstamp_market_symbol=by_source["bitstamp"].market_symbol,
         now=now,
         timeout_seconds=timeout_seconds,
+        client=client,
     )
     normalized: list[RateObservation] = []
     for observation in raw:

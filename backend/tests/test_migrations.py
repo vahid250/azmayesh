@@ -89,6 +89,8 @@ def test_initial_migration_executes_against_empty_sqlite_database(tmp_path, monk
         assert "price_usd_minor" in order_columns
         mapping_columns = {column["name"] for column in inspector.get_columns("exchange_market_mappings")}
         assert {"payment_asset_id", "source", "market_symbol", "market_base_currency", "market_quote_currency", "is_enabled", "reviewed_at"} <= mapping_columns
+        mapping_checks = inspector.get_check_constraints("exchange_market_mappings")
+        assert any(item["name"] == "ck_market_mapping_enabled_requires_review" for item in mapping_checks)
         mapping_forekeys = inspector.get_foreign_keys("exchange_market_mappings")
         assert any(fk["referred_table"] == "payment_assets" and fk["constrained_columns"] == ["payment_asset_id"] for fk in mapping_forekeys)
         quote_columns = {column["name"] for column in inspector.get_columns("payment_intents")}

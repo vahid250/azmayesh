@@ -179,6 +179,77 @@ def _ticker_observation(client: httpx.Client, source: str, candidate: dict[str, 
         }
 
 
+def _quality_summary(sources: dict[str, Any]) -> dict[str, Any]:
+    """Summarize valid direct-USD ticker spreads and cross-source divergence.
+
+    Values are diagnostics only. This function never approves a mapping or
+    changes which sources the production quote engine selects.
+    """
+    by_asset: dict[str, list[dict[str, Any]]] = {"USDT": [], "USDC": []}
+    for source, data in sources.items():
+        for candidate in data.get("candidate_markets", []):
+            if candidate.get("ticker_error") or candidate.get("ticker_http_status") != 200:
+                continue
+            try:
+                bid = Decimal(str(candidate["bid"]))
+                ask = Decimal(str(candidate["ask"]))
+                if not bid.is_finite() or not ask.is_finite() or bid <= 0 or ask < bid:
+                    continue
+                base = str(
+                    candidate.get("base_currency")
+                    or candidate.get("canonical_base_currency")
+                    or candidate.get("market_base_currency")
+                    or ""
+                ).upper()
+                quote = str(
+                    candidate.get("quote_currency")
+                    or candidate.get("canonical_quote_currency")
+                    or candidate.get("counter_currency")
+                    or candidate.get("market_quote_currency")
+                    or ""
+                ).upper()
+                midpoint = (bid + ask) / Decimal(2)
+                if base in by_asset and quote == "USD":
+                    usd_per_token = midpoint
+                    asset = base
+                elif base == "USD" and quote in by_asset:
+                    usd_per_token = Decimal(1) / midpoint
+                    asset = quote
+                else:
+                    continue
+                spread_bps = ((ask - bid) / midpoint * Decimal(10_000))
+                by_asset[asset].append({
+                    "source": source,
+                    "usd_per_token_midpoint": format(usd_per_token, "f"),
+                    "spread_bps": format(spread_bps, ".4f"),
+                    "ticker_retrieved_at": candidate.get("ticker_retrieved_at"),
+                })
+            except (KeyError, InvalidOperation, TypeError, ZeroDivisionError):
+                continue
+
+    summary: dict[str, Any] = {}
+    for asset, observations in by_asset.items():
+        pairs = []
+        for index, left in enumerate(observations):
+            for right in observations[index + 1:]:
+                a = Decimal(left["usd_per_token_midpoint"])
+                b = Decimal(right["usd_per_token_midpoint"])
+                midpoint = (a + b) / Decimal(2)
+                divergence = abs(a - b) / midpoint * Decimal(10_000)
+                pairs.append({
+                    "sources": [left["source"], right["source"]],
+                    "divergence_bps": format(divergence, ".4f"),
+                })
+        summary[asset] = {
+            "valid_ticker_sources": [item["source"] for item in observations],
+            "observations": observations,
+            "pairwise_divergence": pairs,
+            "candidate_only": True,
+            "mapping_approved": False,
+        }
+    return summary
+
+
 def fetch_catalogs(client: httpx.Client) -> dict[str, Any]:
     report: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -203,6 +274,7 @@ def fetch_catalogs(client: httpx.Client) -> dict[str, Any]:
             "response_sha256": hashlib.sha256(raw).hexdigest(),
             "candidate_markets": candidates,
         }
+    report["market_quality"] = _quality_summary(report["sources"])
     return report
 
 

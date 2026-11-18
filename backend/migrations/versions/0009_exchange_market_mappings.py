@@ -39,6 +39,10 @@ def upgrade() -> None:
             "market_base_currency <> market_quote_currency",
             name="ck_market_mapping_distinct_currencies",
         ),
+        sa.CheckConstraint(
+            "is_enabled = false OR reviewed_at IS NOT NULL",
+            name="ck_market_mapping_enabled_requires_review",
+        ),
     )
     op.create_index(
         "ix_exchange_market_mappings_payment_asset_id",

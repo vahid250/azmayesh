@@ -256,3 +256,72 @@ def test_public_payment_rate_fails_closed_when_market_mappings_are_not_ready(mon
 
     assert response.status_code == 503
     assert response.json() == {"detail": "A validated market rate is temporarily unavailable"}
+
+
+
+def test_public_payment_assets_lists_only_enabled_assets_with_complete_reviewed_mappings(monkeypatch):
+    asset = PaymentAsset(
+        id=9, currency="USDC", network="BASE", asset_type="token",
+        decimals=6, min_confirmations=12, is_enabled=True,
+    )
+
+    class FakeResult:
+        def scalars(self):
+            return SimpleNamespace(all=lambda: [asset])
+
+    class FakeSession:
+        def execute(self, statement):
+            return FakeResult()
+
+    original_overrides = main.app.dependency_overrides.copy()
+    main.app.dependency_overrides[main.get_db] = lambda: iter([FakeSession()])
+    monkeypatch.setattr(main, "load_enabled_market_specs", lambda *args, **kwargs: (
+        SimpleNamespace(source="coinbase"),
+        SimpleNamespace(source="kraken"),
+        SimpleNamespace(source="bitstamp"),
+    ))
+    try:
+        response = TestClient(main.app).get("/api/v1/public/payment-assets")
+    finally:
+        main.app.dependency_overrides.clear()
+        main.app.dependency_overrides.update(original_overrides)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "assets": [{
+            "currency": "USDC",
+            "network": "BASE",
+            "asset_type": "token",
+            "decimals": 6,
+        }]
+    }
+
+
+def test_public_payment_assets_hides_assets_without_complete_reviewed_mappings(monkeypatch):
+    asset = PaymentAsset(
+        id=10, currency="USDT", network="TRC20", asset_type="token",
+        decimals=6, min_confirmations=20, is_enabled=True,
+    )
+
+    class FakeResult:
+        def scalars(self):
+            return SimpleNamespace(all=lambda: [asset])
+
+    class FakeSession:
+        def execute(self, statement):
+            return FakeResult()
+
+    original_overrides = main.app.dependency_overrides.copy()
+    main.app.dependency_overrides[main.get_db] = lambda: iter([FakeSession()])
+    monkeypatch.setattr(
+        main, "load_enabled_market_specs",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("mapping missing")),
+    )
+    try:
+        response = TestClient(main.app).get("/api/v1/public/payment-assets")
+    finally:
+        main.app.dependency_overrides.clear()
+        main.app.dependency_overrides.update(original_overrides)
+
+    assert response.status_code == 200
+    assert response.json() == {"assets": []}

@@ -1,18 +1,14 @@
-"""Fail-closed two-source pricing and short-lived quote calculations.
-
-Network adapters belong outside this module. Callers must pass observations
-fetched server-side from independent sources; client-supplied rates are never
-accepted here.
-"""
+"""Fail-closed three-source pricing and short-lived quote calculations."""
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_UP
-from statistics import median
+from itertools import combinations
 from typing import Iterable
 
 
 QUOTE_TTL_SECONDS = 15 * 60
 MAX_ADMIN_MARGIN_BPS = 5_000
+DEFAULT_PRIMARY_DIVERGENCE_BPS = 150
 
 
 @dataclass(frozen=True)
@@ -30,12 +26,19 @@ class LockedQuote:
     issued_at: datetime
     expires_at: datetime
     source_snapshot: list[dict]
+    selected_sources: tuple[str, str]
+    used_backup_source: bool
 
 
 def _utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _spread_bps(a: Decimal, b: Decimal) -> int:
+    midpoint = (a + b) / Decimal(2)
+    return int((abs(a - b) / midpoint * Decimal(10_000)).to_integral_value(rounding=ROUND_UP))
 
 
 def build_locked_quote(
@@ -46,15 +49,14 @@ def build_locked_quote(
     now: datetime | None = None,
     ttl_seconds: int = QUOTE_TTL_SECONDS,
     max_observation_age_seconds: int = 30,
-    max_source_divergence_bps: int = 150,
+    max_source_divergence_bps: int = DEFAULT_PRIMARY_DIVERGENCE_BPS,
     admin_margin_bps: int = 0,
+    primary_sources: tuple[str, str] = ("coinbase", "kraken"),
 ) -> LockedQuote:
-    """Build a fixed quote from at least two fresh, independent server observations.
+    """Use primary pair when they agree; otherwise select the closest valid pair of three.
 
-    units_per_usd means how many payment-asset units equal one USD.
-    The manager margin is added to the amount payable, never subtracted.
-    Amounts are rounded upward to the asset's smallest unit to avoid
-    accidentally under-quoting due to decimal truncation.
+    All observations must be fetched server-side. The backup source may be absent
+    only while the two primary sources agree within the configured threshold.
     """
     current = _utc(now or datetime.now(timezone.utc))
     rows = list(observations)
@@ -66,11 +68,11 @@ def build_locked_quote(
         raise ValueError("quote lifetime must be between 1 and 900 seconds")
     if not 0 <= admin_margin_bps <= MAX_ADMIN_MARGIN_BPS:
         raise ValueError("admin margin is outside the permitted range")
-    if len(rows) < 2:
-        raise ValueError("at least two independent rate sources are required")
+    if len(primary_sources) != 2 or primary_sources[0] == primary_sources[1]:
+        raise ValueError("exactly two distinct primary source names are required")
 
     seen_sources: set[str] = set()
-    normalized: list[tuple[str, Decimal, datetime]] = []
+    normalized: dict[str, tuple[Decimal, datetime]] = {}
     for row in rows:
         source = row.source.strip().lower()
         rate = Decimal(row.units_per_usd)
@@ -83,15 +85,33 @@ def build_locked_quote(
         if age < -5 or age > max_observation_age_seconds:
             raise ValueError("rate observation is stale or from the future")
         seen_sources.add(source)
-        normalized.append((source, rate, observed))
+        normalized[source] = (rate, observed)
 
-    rates = sorted(item[1] for item in normalized)
-    midpoint = (rates[0] + rates[-1]) / Decimal(2)
-    spread_bps = int((((rates[-1] - rates[0]) / midpoint) * Decimal(10_000)).to_integral_value(rounding=ROUND_UP))
-    if spread_bps > max_source_divergence_bps:
-        raise ValueError("independent rate sources diverge beyond the safety threshold")
+    first, second = (name.lower() for name in primary_sources)
+    if first not in normalized or second not in normalized:
+        raise ValueError("both primary rate sources are required")
 
-    consensus_rate = Decimal(str(median(rates)))
+    primary_spread = _spread_bps(normalized[first][0], normalized[second][0])
+    used_backup = False
+    if primary_spread <= max_source_divergence_bps:
+        selected = (first, second)
+    else:
+        pairs = list(combinations(normalized.keys(), 2))
+        if len(pairs) < 3:
+            raise ValueError("primary sources diverge; fresh backup source is required")
+        ranked = sorted(
+            ((_spread_bps(normalized[a][0], normalized[b][0]), a, b) for a, b in pairs),
+            key=lambda item: (item[0], item[1], item[2]),
+        )
+        selected_spread, selected_a, selected_b = ranked[0]
+        if selected_spread > max_source_divergence_bps:
+            raise ValueError("no two of three independent sources agree within the safety threshold")
+        selected = (selected_a, selected_b)
+        used_backup = True
+
+    selected_rates = [normalized[name][0] for name in selected]
+    consensus_rate = sum(selected_rates, Decimal(0)) / Decimal(2)
+    selected_spread = _spread_bps(selected_rates[0], selected_rates[1])
     margin_multiplier = Decimal(10_000 + admin_margin_bps) / Decimal(10_000)
     usd_amount = Decimal(price_usd_minor) / Decimal(100)
     atomic_amount = usd_amount * consensus_rate * margin_multiplier * (Decimal(10) ** payment_decimals)
@@ -102,16 +122,20 @@ def build_locked_quote(
             "source": source,
             "units_per_usd": format(rate, "f"),
             "observed_at": observed.isoformat(),
+            "selected_for_quote": source in selected,
+            "backup_source": source not in (first, second),
         }
-        for source, rate, observed in sorted(normalized, key=lambda item: item[0])
+        for source, (rate, observed) in sorted(normalized.items())
     ]
     return LockedQuote(
         payment_amount_minor=payment_amount_minor,
         units_per_usd=consensus_rate,
-        rate_spread_bps=spread_bps,
+        rate_spread_bps=selected_spread,
         issued_at=current,
         expires_at=current + timedelta(seconds=ttl_seconds),
         source_snapshot=snapshot,
+        selected_sources=selected,
+        used_backup_source=used_backup,
     )
 
 

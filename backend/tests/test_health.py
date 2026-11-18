@@ -315,7 +315,10 @@ def test_public_payment_assets_hides_assets_without_complete_reviewed_mappings(m
             return FakeResult()
 
     original_overrides = main.app.dependency_overrides.copy()
-    main.app.dependency_overrides[main.get_db] = lambda: iter([FakeSession()])
+    def override_db():
+        yield FakeSession()
+
+    main.app.dependency_overrides[main.get_db] = override_db
     monkeypatch.setattr(
         main, "load_enabled_market_specs",
         lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("mapping missing")),

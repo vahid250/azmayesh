@@ -11,6 +11,8 @@ on:
       - "docs/USER_TERMS_FA.md"
       - "docs/PRIVACY_POLICY_FA.md"
       - ".github/workflows/backend-tests.yml"
+  workflow_dispatch:
+
   pull_request:
     branches: ["main"]
     paths:

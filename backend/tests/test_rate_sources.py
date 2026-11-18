@@ -30,12 +30,15 @@ def test_rate_parser_rejects_invalid_or_empty_market_data():
 
 def test_fetches_both_independent_sources_server_side():
     async def run_test():
-            def handler(request):
-                if request.url.host == "api.exchange.coinbase.com":
+        def handler(request):
+            if request.url.host == "api.exchange.coinbase.com":
                 return httpx.Response(200, json={"bid": "0.999", "ask": "1.001"})
-            return httpx.Response(200, json={"error": [], "result": {"USDTUSD": {"b": ["0.998", "10"], "a": ["1.002", "10"]}}})
+            return httpx.Response(
+                200,
+                json={"error": [], "result": {"USDTUSD": {"b": ["0.998", "10"], "a": ["1.002", "10"]}}},
+            )
 
-            client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         try:
             now = datetime(2026, 11, 18, tzinfo=timezone.utc)
             rows = await fetch_dual_exchange_observations(
@@ -46,27 +49,31 @@ def test_fetches_both_independent_sources_server_side():
             )
         finally:
             await client.aclose()
+
         assert [row.source for row in rows] == ["coinbase", "kraken"]
         assert rows[0].units_per_usd == Decimal("1.000")
         assert rows[1].units_per_usd == Decimal("1.000")
         assert all(row.observed_at == now for row in rows)
+
     asyncio.run(run_test())
 
 
 def test_fetch_fails_closed_if_one_exchange_is_unavailable():
     async def run_test():
-    def handler(request):
-        if request.url.host == "api.exchange.coinbase.com":
+        def handler(request):
+            if request.url.host == "api.exchange.coinbase.com":
                 return httpx.Response(200, json={"bid": "1", "ask": "1"})
             return httpx.Response(503)
 
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         try:
             with pytest.raises(ValueError, match="both independent"):
                 await fetch_dual_exchange_observations(
-                coinbase_product_id="USDT-USD",
-                kraken_pair="USDTUSD",
-                client=client,
-            )
-    finally:
-        await client.aclose()
+                    coinbase_product_id="USDT-USD",
+                    kraken_pair="USDTUSD",
+                    client=client,
+                )
+        finally:
+            await client.aclose()
+
+    asyncio.run(run_test())

@@ -29,7 +29,7 @@ def test_quote_uses_two_sources_and_locks_exactly_fifteen_minutes():
         now=NOW,
     )
     assert quote.expires_at - quote.issued_at == timedelta(seconds=QUOTE_TTL_SECONDS)
-    assert quote.payment_amount_minor == 1_001_000
+    assert quote.payment_amount_minor == 1_000_500
     assert quote.units_per_usd == Decimal("1.0005")
     assert {item["source"] for item in quote.source_snapshot} == {"coinbase", "coingecko"}
 
@@ -97,13 +97,25 @@ def test_payment_is_eligible_only_if_trusted_first_seen_is_before_expiry():
     expiry = NOW + timedelta(minutes=15)
     assert trusted_payment_started_in_window(
         first_seen_at=expiry - timedelta(seconds=1),
+        quote_issued_at=NOW,
         quote_expires_at=expiry,
     )
     assert trusted_payment_started_in_window(
         first_seen_at=expiry,
+        quote_issued_at=NOW,
         quote_expires_at=expiry,
     )
     assert not trusted_payment_started_in_window(
         first_seen_at=expiry + timedelta(seconds=1),
+        quote_issued_at=NOW,
+        quote_expires_at=expiry,
+    )
+
+
+def test_payment_first_seen_before_quote_issue_is_rejected():
+    expiry = NOW + timedelta(minutes=15)
+    assert not trusted_payment_started_in_window(
+        first_seen_at=NOW - timedelta(seconds=1),
+        quote_issued_at=NOW,
         quote_expires_at=expiry,
     )

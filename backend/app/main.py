@@ -532,7 +532,7 @@ async def public_payment_rate(
             "spread_bps": quote.rate_spread_bps,
         },
         "source_snapshot": quote.source_snapshot,
-        "fetched_at": now,
+        "fetched_at": quote_now,
         "informational_only": True,
         "invoice_rate_locked": False,
     }

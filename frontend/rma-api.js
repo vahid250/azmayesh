@@ -119,6 +119,25 @@
         return r.json();
       });
     },
+    publicPaymentRate: function (currency, network) {
+      const params = new URLSearchParams({
+        currency: String(currency || "").trim(),
+        network: String(network || "").trim()
+      });
+      return fetch(apiBase() + "/v1/public/payment-rate?" + params.toString(), {
+        headers: { "Accept": "application/json" },
+        cache: "no-store"
+      }).then(function (response) {
+        return response.json().catch(function () { return null; }).then(function (payload) {
+          if (!response.ok) {
+            const error = new Error((payload && payload.detail) || ("Payment rate unavailable: " + response.status));
+            error.status = response.status;
+            throw error;
+          }
+          return payload;
+        });
+      });
+    },
     serviceStatus: function () {
       return fetch(apiBase() + "/v1/public/service-status", {
         headers: { "Accept": "application/json" },

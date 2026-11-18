@@ -153,3 +153,12 @@ Google Play Services/FCM به allow-list تلگرام اضافه نشود. جد�
 - هیچ kernel، nftables، firewall، flowtable، offload، WireGuard peer، host agent، database، Android app یا تنظیم DNS در این مرحله تغییر نکرده است.
 - فاز A محلی نیز تا اجرای جداگانه و ثبت artifact، انجام‌شده محسوب نمی‌شود.
 - overshoot، latency و SLA هنوز اندازه‌گیری یا تصویب نشده‌اند.
+
+
+## پیشرفت فاز A — اسکلت آزمایشگاه محلی
+
+- مسیر `lab/phase-a/README.md`: دستورالعمل توپولوژی disposable، پیش‌نیازها، توالی G0/Q-01 تا Q-05 و artifactهای لازم.
+- مسیر `lab/phase-a/phase-a-lab.sh`: scaffold برای ساخت namespaceهای مستقل A، B، C، gateway و sink؛ A و B از یک named quota و C از quota مستقل استفاده می‌کنند.
+- فایروال فقط در namespace دروازهٔ آزمایشگاه تعریف می‌شود؛ chain با policy drop است و rule عمومی established/related برای دورزدن شمارش وجود ندارد.
+- commitهای ایجاد فایل: `5b9cc9b347e7554136e16366feae9464798d32db` و `182147ae05600df2123e80970bff5532d4a1aa7e`.
+- **وضعیت:** scaffold در شاخه ثبت شده، اما هنوز روی Linux VM اجرا نشده؛ هیچ تست شبکه‌ای یا quota به‌عنوان موفق گزارش نمی‌شود. گام بعدی بازبینی ایستا و افزودن traffic/counter harness است؛ سپس اجرا در VM disposable.

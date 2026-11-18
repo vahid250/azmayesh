@@ -31,6 +31,11 @@ def test_quote_uses_primary_pair_when_they_agree():
     assert quote.units_per_usd == Decimal("1.0005")
     assert quote.selected_sources == ("coinbase", "kraken")
     assert quote.used_backup_source is False
+    # Coinbase has fewer payment units per USD, so one token is worth more USD.
+    assert quote.display_rate_source == "coinbase"
+    assert quote.display_rate_usd_per_unit == Decimal("1")
+    display_rows = [row for row in quote.source_snapshot if row["best_display_rate"]]
+    assert [row["source"] for row in display_rows] == ["coinbase"]
 
 
 def test_disagreement_uses_closest_two_of_three_and_marks_backup():
@@ -46,6 +51,12 @@ def test_disagreement_uses_closest_two_of_three_and_marks_backup():
     assert quote.units_per_usd == Decimal("1.0005")
     selected = {item["source"] for item in quote.source_snapshot if item["selected_for_quote"]}
     assert selected == {"coinbase", "bitstamp"}
+    # The divergent Kraken outlier must not be advertised as the best rate.
+    assert quote.display_rate_source == "coinbase"
+    assert quote.display_rate_usd_per_unit == Decimal("1")
+    kraken = next(row for row in quote.source_snapshot if row["source"] == "kraken")
+    assert kraken["display_eligible"] is False
+    assert kraken["best_display_rate"] is False
 
 
 def test_disagreement_without_backup_fails_closed():
@@ -121,3 +132,18 @@ def test_payment_is_eligible_only_if_trusted_first_seen_is_in_quote_window():
     assert not trusted_payment_started_in_window(
         first_seen_at=NOW - timedelta(seconds=1), quote_issued_at=NOW, quote_expires_at=expiry
     )
+
+
+
+def test_display_rate_uses_highest_usd_value_among_sources_inside_consensus_band():
+    quote = build_locked_quote(
+        price_usd_minor=100,
+        payment_decimals=6,
+        observations=rates("0.9990", "1.0010", "1.0000"),
+        now=NOW,
+    )
+    # Lower payment-units-per-USD means higher USD value per payment unit.
+    assert quote.display_rate_source == "coinbase"
+    assert quote.display_rate_usd_per_unit == Decimal(1) / Decimal("0.9990")
+    eligible = [row for row in quote.source_snapshot if row["display_eligible"]]
+    assert len(eligible) == 3

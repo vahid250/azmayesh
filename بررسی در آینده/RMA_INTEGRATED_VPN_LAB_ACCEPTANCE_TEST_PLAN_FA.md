@@ -175,3 +175,15 @@ Google Play Services/FCM به allow-list تلگرام اضافه نشود. جد�
 - commitهای ایجاد/به‌روزرسانی: `6fd165dd7d53f5ded4230b8b0e1c9df4ed51d93a`, `62ad20b9dce24065631fff6c3e12d8b3eb40b0bd`, `b2fff91cf1e56752aa78e8a128b02625327c7a41`, `bf1ab7688ddc51438488972aa794577f31235478`.
 
 **وضعیت پذیرش:** test harness آمادهٔ بازبینی است؛ G0 هنوز اجرا نشده و هیچ Q-test پاس‌شده محسوب نمی‌شود.
+
+
+## به‌روزرسانی ممیزی و ابزارهای فاز A — ۱۸ نوامبر ۲۰۲۶
+
+- بازبینی ایستای چهار فایل آزمایشگاه انجام شد: `phase-a-lab.sh`، `phase-a-traffic-test.sh`، `traffic.py` و `README.md`.
+- شروع sink UDP اصلاح شد: اکنون sink پس از bind کردن socket یک ready marker می‌نویسد و harness تا دریافت marker منتظر می‌ماند؛ تأخیر ثابت قبلی معیار آمادگی نبود.
+- بررسی syntax به شکل محلی انجام شد: `bash -n` برای دو اسکریپت Bash و `python3 -m py_compile` برای traffic.py موفق بودند. اینها بررسی syntax هستند، نه اجرای topology.
+- workflow مستقل `.github/workflows/phase-a-static.yml` اضافه شد تا در تغییر فایل‌های فاز A، Bash/Python syntax را در GitHub Actions بررسی کند. در لحظه ثبت این گزارش، اجرای موفق این workflow هنوز از GitHub تأیید نشده است.
+- نحو مستند nftables برای named quota، reference با `quota name`، و `nft reset quota <family> <table> <name>` با مستندات مرجع تطبیق داده شد؛ این تطبیق مستنداتی جایگزین parser/kernel test نیست.
+- محیط اجرای فعلی `ip` و Python دارد اما `nft` ندارد؛ بنابراین اجرای VM/network namespace و تست واقعی Q-01/Q-02 هنوز ممکن نشده است.
+- هیچ Q-test پاس نشده، هیچ overshoot یا packet boundary اندازه‌گیری نشده و G0 هنوز نیازمند اجرای VM disposable و ثبت artifact است.
+- تغییرهای اخیر فقط در شاخه کاری ثبت شده‌اند؛ production، main، database، host firewall، VPS و Android app تغییر نکرده‌اند.

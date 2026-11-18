@@ -1,8 +1,9 @@
 """Three independent public exchange ticker adapters.
 
-Coinbase and Kraken are primary. Bitstamp is a continuously polled/parallel
-standby source. All three requests are launched concurrently so fallback
-selection never waits for a second sequential network round-trip.
+Coinbase and Kraken are primary. Bitstamp is a parallel standby request for
+that quote attempt; this module does not implement a persistent polling loop or
+background cache. All three requests are launched concurrently so fallback
+selection does not require a second sequential network round-trip.
 """
 import asyncio
 from datetime import datetime, timezone

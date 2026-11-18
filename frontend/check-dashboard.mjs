@@ -96,10 +96,10 @@ if (!html.includes('"primary": "#34d399"') || !html.includes('"primary-container
 if (!termsClient.includes("draft_testing_only") || !termsClient.includes("تا فعال‌شدن سفارش ذخیره نمی‌شود") || !apiClient.includes("createOrder: function") || !apiClient.includes("terms_version: termsVersion")) {
   throw new Error("Terms acceptance preview and order API contract are incomplete.");
 }
-if (!apiClient.includes("publicPaymentRate: function") || !apiClient.includes("/v1/public/payment-rate")) {
+if (!apiClient.includes("publicPaymentAssets: function") || !apiClient.includes("/v1/public/payment-assets") || !apiClient.includes("publicPaymentRate: function") || !apiClient.includes("/v1/public/payment-rate")) {
   throw new Error("Public validated payment-rate API client method is missing.");
 }
-if (!html.includes('publicPaymentRate("USDT", "TRC20")') || !html.includes("invoice_rate_locked") && !html.includes("نرخ فقط نمایشی است")) {
+if (!html.includes('id="rmaPaymentAssetSelect"') || !html.includes("publicPaymentAssets()") || !html.includes("publicPaymentRate(parts[0], parts[1])") || !html.includes("نرخ فقط نمایشی است")) {
   throw new Error("The dashboard must render the validated display rate as informational, not as a locked invoice quote.");
 }
 if (!apiClient.includes("/v1/auth/session") || !apiClient.includes('headers.set("Authorization", "Bearer "') || apiClient.includes("X-Telegram-Init-Data") || !apiClient.includes("/v1/public/service-status") || !apiClient.includes("serviceStatus: function ()")) {

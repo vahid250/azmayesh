@@ -169,12 +169,17 @@ def test_public_payment_rate_returns_best_validated_source_without_creating_invo
     def override_db():
         yield FakeSession()
 
-    async def fake_fetch(*, payment_currency, mappings, now, **kwargs):
+    async def fake_fetch(*, payment_currency, mappings, **kwargs):
         assert payment_currency == "USDT"
         assert len(mappings) == 3
+        # The endpoint must not inject its request-start time into observations.
+        # The adapter owns each observation timestamp at response receipt.
+        assert "now" not in kwargs
+        from datetime import datetime, timezone
+        observed_at = datetime.now(timezone.utc) - timedelta(seconds=1)
         return [
-            RateObservation("coinbase", Decimal("0.9990"), now - timedelta(seconds=1)),
-            RateObservation("kraken", Decimal("1.0010"), now - timedelta(seconds=1)),
+            RateObservation("coinbase", Decimal("0.9990"), observed_at),
+            RateObservation("kraken", Decimal("1.0010"), observed_at),
         ]
 
     monkeypatch.setattr(main, "load_enabled_market_specs", lambda *args, **kwargs: (

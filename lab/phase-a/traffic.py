@@ -10,6 +10,9 @@ from collections import defaultdict
 def serve(args):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((args.bind, args.port))
+    if args.ready_file:
+        with open(args.ready_file, "w", encoding="utf-8") as ready:
+            ready.write("ready\\n")
     sock.settimeout(0.10)
     deadline = time.monotonic() + args.duration
     counts = defaultdict(lambda: {"packets": 0, "payload_bytes": 0})
@@ -43,6 +46,7 @@ def main():
     server.add_argument("--port", type=int, default=44000)
     server.add_argument("--duration", type=float, default=2.0)
     server.add_argument("--output", required=True)
+    server.add_argument("--ready-file")
     client = sub.add_parser("send")
     client.add_argument("--destination", default="10.10.4.2")
     client.add_argument("--port", type=int, default=44000)

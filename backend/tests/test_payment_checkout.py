@@ -54,10 +54,10 @@ def db():
         engine.dispose()
 
 
-def observations(rate="1.0005"):
+def observations(rate="1.0005", now=NOW):
     return [
-        RateObservation("coinbase", Decimal(rate), NOW - timedelta(seconds=2)),
-        RateObservation("kraken", Decimal(rate), NOW - timedelta(seconds=2)),
+        RateObservation("coinbase", Decimal(rate), now - timedelta(seconds=2)),
+        RateObservation("kraken", Decimal(rate), now - timedelta(seconds=2)),
     ]
 
 
@@ -72,7 +72,7 @@ def create_quote(db, order, user="user-1", *, now=NOW, rate="1.0005", currency="
         telegram_user_id=user,
         payment_currency=currency,
         payment_network=network,
-        observations=observations(rate),
+        observations=observations(rate, now),
         admin_margin_bps=0,
         now=now,
     )

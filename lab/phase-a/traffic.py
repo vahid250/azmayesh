@@ -12,7 +12,7 @@ def serve(args):
     sock.bind((args.bind, args.port))
     if args.ready_file:
         with open(args.ready_file, "w", encoding="utf-8") as ready:
-            ready.write("ready\\n")
+            ready.write("ready\n")
     sock.settimeout(0.10)
     deadline = time.monotonic() + args.duration
     counts = defaultdict(lambda: {"packets": 0, "payload_bytes": 0})

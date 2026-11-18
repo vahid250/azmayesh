@@ -251,3 +251,10 @@ backend مصرف حسابداری را از quota بالاتر نمی‌برد �
 این طرح توپولوژی disposable، دو peer با سهمیه مشترک و peer سوم با سهمیه مستقل، آزمون packet boundary/overshoot، fault injection، reboot/restore، flowtable/offload، DNS و Private DNS، IPv4/IPv6، Telegram-only و رفتار اعلان‌ها را تعریف می‌کند. معیارهای G0 تا G6 و artifactهای لازم نیز مشخص شده‌اند.
 
 **وضعیت:** فقط طرح مستند شده است. نه فاز A محلی اجرا شده و نه میزبان آزمایشی provision شده است. پاسخ انسانی Hetzner و تأیید میزبان مجاز همچنان پیش‌نیاز هر سفارش/نصب است. هیچ rule، firewall، kernel، agent، peer، database، Android app یا تنظیم DNS تغییر نکرده است.
+
+
+## شروع فاز A — آزمایشگاه Linux ایزوله
+
+اسکلت اولیهٔ فاز A در `lab/phase-a/` ثبت شد: README اجرایی و اسکریپت ساخت پنج network namespace مستقل (Device A، Device B، Device C، gateway و sink). A و B به یک nftables named quota مشترک متصل‌اند؛ C quota مستقل دارد. chain آزمایش policy drop دارد و هیچ rule عمومی established/related برای bypass شمارش اضافه نشده است.
+
+این فقط آماده‌سازی کد آزمایشگاه است؛ هنوز روی VM اجرا نشده و نتیجهٔ آزمون، دقت quota یا قبولی G0/G1 تأیید نشده است. اسکریپت به‌صورت صریح up/status/down دارد، از وجود namespaceهای هم‌نام جلوگیری می‌کند و فقط namespaceهای آزمایشگاه را پاک می‌کند. هیچ host firewall، route میزبان، production، database، agent یا peer واقعی تغییر نکرده است.

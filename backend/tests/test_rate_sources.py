@@ -112,3 +112,38 @@ def test_primary_failure_blocks_quote_but_backup_failure_is_tolerated_if_primari
         assert [row.source for row in rows] == ["coinbase", "kraken"]
 
     asyncio.run(run_test())
+
+
+def test_production_observation_timestamp_is_recorded_after_response_arrives():
+    async def run_test():
+        request_started = {}
+
+        async def handler(request):
+            request_started[request.url.host] = datetime.now(timezone.utc)
+            await asyncio.sleep(0.02)
+            if request.url.host == "api.exchange.coinbase.com":
+                return httpx.Response(200, json={"bid": "1", "ask": "1"})
+            if request.url.host == "api.kraken.com":
+                return httpx.Response(200, json={"error": [], "result": {"USDTUSD": {"b": ["1", "10"], "a": ["1", "10"]}}})
+            return httpx.Response(200, json={"bid": "1", "ask": "1"})
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            rows = await fetch_three_exchange_observations(
+                coinbase_product_id="USDT-USD",
+                kraken_pair="USDTUSD",
+                bitstamp_market_symbol="usdtusd",
+                client=client,
+            )
+        finally:
+            await client.aclose()
+
+        assert len(rows) == 2
+        for row in rows:
+            host = {
+                "coinbase": "api.exchange.coinbase.com",
+                "kraken": "api.kraken.com",
+            }[row.source]
+            assert row.observed_at >= request_started[host]
+
+    asyncio.run(run_test())

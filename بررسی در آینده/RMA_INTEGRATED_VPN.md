@@ -123,6 +123,14 @@
 
 **تصمیم قطعی فعلی:** قابلیت Integrated VPN فقط با پروفایل‌ها و مجوزهای صادرشده از زنجیرهٔ رسمی R&MA فعال می‌شود؛ واردکردن کانفیگ‌های دیگر پشتیبانی نخواهد شد. پیاده‌سازی این اصل در مرحلهٔ طراحی مستند است و هنوز هیچ migration، تغییر عملیاتی یا فعال‌سازی تولید انجام نشده است.
 
+## طراحی تفصیلی پروتکل provisioning
+
+سند مستقل طراحی پروتکل شناسایی Telegram، pairing امن Mini App و اپ Android، handoff یک‌بارمصرف، اثبات مالکیت کلید دستگاه، provisioning grant، قرارداد API مفهومی، threat model و آزمون‌های پذیرش ثبت شد:
+
+[R&MA Integrated VPN — Provisioning Protocol](RMA_INTEGRATED_VPN_PROVISIONING_PROTOCOL_FA.md)
+
+این سند صرفاً طراحی است؛ endpoint، migration، مدل دیتابیس یا کد عملیاتی ایجاد نشده است. پیشنهادهای اصلی عبارت‌اند از اعتبارسنجی server-side دادهٔ خام Telegram Mini App، handoff code کوتاه‌عمر و یک‌بارمصرف، کلید خصوصی تولیدشده روی دستگاه، اثبات مالکیت کلید با challenge، grant سمت سرور و ایجاد peer فقط از طریق backend/host agent مجاز.
+
 ## معماری هدف
 
 Mini App نقش control plane و رابط مدیریت را دارد؛ اپ همراه بومی Android نقش data plane و ایجادکنندهٔ تونل را دارد؛ WireGuard gateway ترافیک را عبور می‌دهد و host agent مصرف را از سمت سرور می‌سنجد.

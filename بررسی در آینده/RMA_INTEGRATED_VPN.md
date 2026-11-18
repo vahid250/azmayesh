@@ -240,3 +240,14 @@ backend مصرف حسابداری را از quota بالاتر نمی‌برد �
 گزینهٔ اول آزمایشگاهی برای quota سخت‌گیرانه، nftables named quota object مشترک در مسیر forward برای هر دو جهت و همهٔ peerهای یک entitlement است. کد kernel از شمارندهٔ atomic64 و skb length استفاده می‌کند و packet عبورکننده از سقف باید drop شود؛ اما تفاوت نقطهٔ شمارش با WireGuard/backend counters، flowtable/offload، reboot و restore ruleset باید روی kernel واقعی آزمایش شود. eBPF فعلاً گزینهٔ دوم است، نه انتخاب خودکار.
 
 هیچ کد Android، تنظیم DNS، nftables rule، kernel module، eBPF، migration یا سرور تغییر نکرده است. مرحلهٔ بعد از این سند: تبدیل معیارها به test plan آزمایشگاهی و بررسی قابلیت‌های kernel/nftables روی میزبان مجاز، بدون نصب یا تغییر تنظیمات production.
+
+
+## طرح پذیرش و آماده‌سازی آزمایشگاه
+
+طرح مستقل آزمایشگاه ایزوله ثبت شد:
+
+[R&MA Integrated VPN — Lab Acceptance & Test Plan](RMA_INTEGRATED_VPN_LAB_ACCEPTANCE_TEST_PLAN_FA.md)
+
+این طرح توپولوژی disposable، دو peer با سهمیه مشترک و peer سوم با سهمیه مستقل، آزمون packet boundary/overshoot، fault injection، reboot/restore، flowtable/offload، DNS و Private DNS، IPv4/IPv6، Telegram-only و رفتار اعلان‌ها را تعریف می‌کند. معیارهای G0 تا G6 و artifactهای لازم نیز مشخص شده‌اند.
+
+**وضعیت:** فقط طرح مستند شده است. نه فاز A محلی اجرا شده و نه میزبان آزمایشی provision شده است. پاسخ انسانی Hetzner و تأیید میزبان مجاز همچنان پیش‌نیاز هر سفارش/نصب است. هیچ rule، firewall، kernel، agent، peer، database، Android app یا تنظیم DNS تغییر نکرده است.

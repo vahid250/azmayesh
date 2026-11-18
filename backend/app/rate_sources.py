@@ -67,6 +67,11 @@ async def _fetch_bitstamp(client: httpx.AsyncClient, market_symbol: str, observe
     return RateObservation("bitstamp", parse_bitstamp_midpoint(response.json()), observed_at)
 
 
+def _primary_spread_bps(a: Decimal, b: Decimal) -> int:
+    midpoint = (a + b) / Decimal(2)
+    return int((abs(a - b) / midpoint * Decimal(10_000)).to_integral_value(rounding="ROUND_UP"))
+
+
 async def fetch_three_exchange_observations(
     *,
     coinbase_product_id: str,
@@ -74,37 +79,57 @@ async def fetch_three_exchange_observations(
     bitstamp_market_symbol: str,
     now: datetime | None = None,
     timeout_seconds: float = 3.0,
+    max_primary_divergence_bps: int = 150,
     client: httpx.AsyncClient | None = None,
 ) -> list[RateObservation]:
-    """Fetch all sources concurrently; fail only if a primary is missing.
+    """Fetch primary prices first, with the backup request already running.
 
-    If Bitstamp is unavailable, its missing observation is tolerated only when
-    Coinbase and Kraken agree. The quote engine rejects primary disagreement
-    without a fresh third observation.
+    When primary prices agree, return immediately without waiting for Bitstamp.
+    When they diverge, await the already-in-flight backup request. If it is
+    unavailable, the quote engine will fail closed rather than use one source.
     """
     product = coinbase_product_id.strip().upper()
     pair = kraken_pair.strip()
     market = bitstamp_market_symbol.strip().lower()
     if not product or "/" in product or not pair or not market or not market.isalnum():
         raise ValueError("explicit Coinbase, Kraken and Bitstamp market mappings are required")
+    if max_primary_divergence_bps < 0:
+        raise ValueError("primary divergence threshold must be nonnegative")
     observed_at = now or datetime.now(timezone.utc)
 
     async def fetch_with(active_client: httpx.AsyncClient) -> list[RateObservation]:
-        tasks = [
-            _fetch_coinbase(active_client, product, observed_at),
-            _fetch_kraken(active_client, pair, observed_at),
-            _fetch_bitstamp(active_client, market, observed_at),
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        primary_results = results[:2]
-        if any(isinstance(item, BaseException) for item in primary_results):
-            raise ValueError("both primary exchange sources are required") from next(
-                item for item in primary_results if isinstance(item, BaseException)
+        backup_task = asyncio.create_task(_fetch_bitstamp(active_client, market, observed_at))
+        try:
+            primary_results = await asyncio.gather(
+                _fetch_coinbase(active_client, product, observed_at),
+                _fetch_kraken(active_client, pair, observed_at),
+                return_exceptions=True,
             )
-        observations = [primary_results[0], primary_results[1]]
-        if not isinstance(results[2], BaseException):
-            observations.append(results[2])
-        return observations
+            errors = [item for item in primary_results if isinstance(item, BaseException)]
+            if errors:
+                backup_task.cancel()
+                await asyncio.gather(backup_task, return_exceptions=True)
+                raise ValueError("both primary exchange sources are required") from errors[0]
+
+            primary_rows = list(primary_results)
+            primary_spread = _primary_spread_bps(
+                primary_rows[0].units_per_usd,
+                primary_rows[1].units_per_usd,
+            )
+            if primary_spread <= max_primary_divergence_bps:
+                backup_task.cancel()
+                await asyncio.gather(backup_task, return_exceptions=True)
+                return primary_rows
+
+            backup_result = await asyncio.gather(backup_task, return_exceptions=True)
+            if isinstance(backup_result[0], BaseException):
+                return primary_rows
+            return primary_rows + [backup_result[0]]
+        except BaseException:
+            if not backup_task.done():
+                backup_task.cancel()
+                await asyncio.gather(backup_task, return_exceptions=True)
+            raise
 
     if client is not None:
         return await fetch_with(client)

@@ -62,23 +62,33 @@ def _kraken_candidates(payload: Any) -> list[dict[str, Any]]:
     if not isinstance(result, dict):
         raise ValueError("Kraken AssetPairs response has no result object")
     rows = []
+    usd_aliases = {"USD", "ZUSD"}
     for rest_key, item in result.items():
         if not isinstance(item, dict):
             continue
-        base, quote = item.get("base"), item.get("quote")
-        # Do not infer canonical currencies from Kraken's internal X/Z aliases.
-        # Emit plausible candidates for human verification instead.
-        if _contains_target(rest_key) or _contains_target(item.get("altname")) or _contains_target(item.get("wsname")) or _contains_target(base) or _contains_target(quote):
-            rows.append({
-                "rest_key": rest_key,
-                "altname": item.get("altname"),
-                "wsname": item.get("wsname"),
-                "base": base,
-                "quote": quote,
-                "status": item.get("status"),
-                "candidate_only": True,
-                "review_note": "Verify Kraken currency aliases and exact USD leg manually; this row is not auto-approved.",
-            })
+        base = str(item.get("base") or "").upper()
+        quote = str(item.get("quote") or "").upper()
+        # Kraken commonly represents USD as ZUSD in its REST catalog.
+        # Keep that raw alias for review, but only emit an exact direct-USD
+        # candidate; cross pairs such as ADA/USDC and USDC/USDT are excluded.
+        direct_usd = (
+            (base in TARGET_ASSETS and quote in usd_aliases)
+            or (base in usd_aliases and quote in TARGET_ASSETS)
+        )
+        if not direct_usd:
+            continue
+        rows.append({
+            "rest_key": rest_key,
+            "altname": item.get("altname"),
+            "wsname": item.get("wsname"),
+            "base": base,
+            "quote": quote,
+            "canonical_base_currency": base if base in TARGET_ASSETS else "USD",
+            "canonical_quote_currency": "USD" if quote in usd_aliases else quote,
+            "status": item.get("status"),
+            "candidate_only": True,
+            "review_note": "Direct USD candidate only; verify Kraken aliases, status, ticker response and liquidity before any manual approval.",
+        })
     return rows
 
 

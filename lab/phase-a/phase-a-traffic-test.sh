@@ -21,9 +21,15 @@ need_tools() {
 }
 start_sink() {
   local output="$1"
-  ip netns exec "$SINK" python3 "$PY" serve --port "$PORT" --duration 2.0 --output "$output" &
+  local ready="$2"
+  ip netns exec "$SINK" python3 "$PY" serve --port "$PORT" --duration 2.0 --output "$output" --ready-file "$ready" &
   SINK_PID=$!
-  sleep 0.20
+  for _ in $(seq 1 50); do
+    [[ -f "$ready" ]] && return 0
+    kill -0 "$SINK_PID" 2>/dev/null || die "UDP sink exited before becoming ready"
+    sleep 0.10
+  done
+  die "UDP sink did not become ready within 5 seconds"
 }
 wait_sink() {
   local pid="$1"
@@ -48,8 +54,7 @@ trap cleanup EXIT
 
 echo "[Q-01] Shared quota: A then B, 30 UDP datagrams each (1200-byte payloads)"
 quota_reset shared_ab
-start_sink "$TMP/shared.json"
-SINK_PID=$!
+start_sink "$TMP/shared.json" "$TMP/shared.ready"
 ip netns exec "$A" python3 "$PY" send --port "$PORT" --count 30
 ip netns exec "$B" python3 "$PY" send --port "$PORT" --count 30
 wait_sink "$SINK_PID"
@@ -74,8 +79,7 @@ CHECK
 
 echo "[Q-02] Independent quota: C should retain its own full allowance"
 quota_reset isolated_c
-start_sink "$TMP/c.json"
-SINK_PID=$!
+start_sink "$TMP/c.json" "$TMP/c.ready"
 ip netns exec "$C" python3 "$PY" send --port "$PORT" --count 30
 wait_sink "$SINK_PID"
 SINK_PID=""

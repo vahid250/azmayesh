@@ -201,3 +201,16 @@ Mini App نقش control plane و رابط مدیریت را دارد؛ اپ هم
 محدودیت مهم: اگر TUN برقرار باشد اما gateway/WireGuard قطع شود، کلاینت می‌تواند بسته‌های Telegram را داخل TUN drop کند و از direct fallback جلوگیری کند. اما اگر خود VpnService متوقف/crash/revoke شود، Android شبکه را restore می‌کند؛ per-app allow-list به‌تنهایی fail-closed دائمی برای Telegram تضمین نمی‌کند. Always-on lockdown می‌تواند ترافیک خارج VPN را مسدود کند، ولی با نیاز آنلاین‌ماندن سایر برنامه‌ها تعارض دارد. این محدودیت باید در UX و معیارهای پذیرش شفاف بماند.
 
 این سند فقط طراحی است؛ هیچ کد، migration، تنظیم gateway/firewall/DNS یا سرور تغییر نکرده است. مرحلهٔ بعد: بررسی Private DNS و package/push compatibility روی دستگاه آزمایشگاهی، سپس ممیزی جداگانهٔ دقت metering و overshoot.
+
+
+## ممیزی دقت Metering و مصرف اضافه پس از پایان سهمیه
+
+ممیزی کد host agent، endpoint مصرف و منطق entitlement انجام و در سند مستقل ثبت شد:
+
+[R&MA Integrated VPN — Metering & Overshoot Audit](RMA_INTEGRATED_VPN_METERING_OVERSHOOT_AUDIT_FA.md)
+
+یافتهٔ کلیدی: با ترتیب فعلی چرخه، در حالت سالم تأخیر بالقوه از عبور واقعی quota تا حذف peer تقریباً دو poll interval به‌علاوهٔ زمان پردازش/شبکه است؛ با مقدار پیش‌فرض ۱۵ ثانیه، حدود ۳۰ ثانیه، و در سقف تنظیم فعلی ۳۰۰ ثانیه، حدود ۶۰۰ ثانیه. در outage هم پنجرهٔ پیش‌فرض ۱۲۰ ثانیه به تأخیر اضافه می‌شود. این اعداد تخمین طراحی‌اند، نه SLA؛ شکست اجرای فرمان حذف یا توقف agent می‌تواند حد زمانی را از بین ببرد.
+
+backend مصرف حسابداری را از quota بالاتر نمی‌برد و interval کامل را برای audit نگه می‌دارد؛ با این حال، این به معنی جلوگیری فیزیکی از انتقال بایت اضافه نیست. quota مشترک چند دستگاه نیز باید در هر راهکار enforcement آینده به‌صورت aggregate کنترل شود. پیشنهادها: refresh فوری registry پس از exhaustion، poll کوتاه‌تر مخصوص Integrated VPN و بررسی kernel-level enforcement در آزمایشگاه؛ هیچ‌یک هنوز پیاده‌سازی یا انتخاب نهایی نشده‌اند.
+
+این سند فقط ممیزی و طراحی است؛ هیچ تنظیم، کد، migration، agent، peer، firewall یا سروری تغییر نکرده است.

@@ -19,13 +19,14 @@ def test_initial_migration_is_registered_and_has_expected_tables():
     revision = scripts.get_revision("head")
 
     assert revision is not None
-    assert revision.revision == "0007_payment_intent_order_link"
+    assert revision.revision == "0008_usd_plan_order_prices"
     source = Path(scripts.get_revision("0002_billing_ledger").path).read_text(encoding="utf-8")
     payment_method_migration = Path(scripts.get_revision("0003_order_payment_method").path).read_text(encoding="utf-8")
     terms_migration = Path(scripts.get_revision("0004_order_terms_acceptance").path).read_text(encoding="utf-8")
     sessions_migration = Path(scripts.get_revision("0005_user_sessions").path).read_text(encoding="utf-8")
     quotes_migration = Path(scripts.get_revision("0006_expiring_payment_quotes").path).read_text(encoding="utf-8")
-    order_link_migration = Path(revision.path).read_text(encoding="utf-8")
+    order_link_migration = Path(scripts.get_revision("0007_payment_intent_order_link").path).read_text(encoding="utf-8")
+    usd_price_migration = Path(revision.path).read_text(encoding="utf-8")
     initial = Path(scripts.get_revision("0001_initial").path).read_text(encoding="utf-8")
     assert '"wireguard_clients"' in initial
     assert '"wireguard_client_owners"' in initial
@@ -44,6 +45,7 @@ def test_initial_migration_is_registered_and_has_expected_tables():
     assert "order_id" in order_link_migration
     assert "fk_payment_intents_order_id_orders" in order_link_migration
     assert "ondelete=" + chr(34) + "RESTRICT" + chr(34) in source
+    assert "price_usd_minor" in usd_price_migration
 
 
 def test_initial_migration_executes_against_empty_sqlite_database(tmp_path, monkeypatch):
@@ -77,6 +79,10 @@ def test_initial_migration_executes_against_empty_sqlite_database(tmp_path, monk
         assert "payment_method" in order_columns
         session_columns = {column["name"] for column in inspector.get_columns("user_sessions")}
         assert {"telegram_user_id", "token_hash", "exchange_key_hash", "init_data_hash", "expires_at", "revoked_at"} <= session_columns
+        plan_columns = {column["name"] for column in inspector.get_columns("plans")}
+        order_columns = {column["name"] for column in inspector.get_columns("orders")}
+        assert "price_usd_minor" in plan_columns
+        assert "price_usd_minor" in order_columns
         quote_columns = {column["name"] for column in inspector.get_columns("payment_intents")}
         assert {"order_id", "price_usd_minor", "payment_amount_minor", "units_per_usd", "source_snapshot", "quote_issued_at", "quote_expires_at", "payment_first_seen_at"} <= quote_columns
         quote_forekeys = inspector.get_foreign_keys("payment_intents")

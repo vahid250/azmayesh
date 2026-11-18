@@ -274,7 +274,10 @@ def test_public_payment_assets_lists_only_enabled_assets_with_complete_reviewed_
             return FakeResult()
 
     original_overrides = main.app.dependency_overrides.copy()
-    main.app.dependency_overrides[main.get_db] = lambda: iter([FakeSession()])
+    def override_db():
+        yield FakeSession()
+
+    main.app.dependency_overrides[main.get_db] = override_db
     monkeypatch.setattr(main, "load_enabled_market_specs", lambda *args, **kwargs: (
         SimpleNamespace(source="coinbase"),
         SimpleNamespace(source="kraken"),

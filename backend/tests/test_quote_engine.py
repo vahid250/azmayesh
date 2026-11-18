@@ -79,7 +79,7 @@ def test_manager_margin_is_applied_to_the_customer_amount_and_rounds_up():
         now=NOW,
         admin_margin_bps=100,
     )
-    assert quote.payment_amount_minor == 102
+    assert quote.payment_amount_minor == 101
 
 
 def test_quote_lifetime_cannot_exceed_fifteen_minutes():

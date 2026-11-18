@@ -486,17 +486,19 @@ async def public_payment_rate(
             payment_asset_id=asset.id,
             payment_currency=asset.currency,
         )
-        now = datetime.now(timezone.utc)
+        # Let each adapter timestamp its observation when the HTTP response
+        # arrives. Passing request-start time here would make slow responses
+        # appear artificially fresh and could bypass the 30-second age guard.
         observations = await fetch_payment_asset_observations(
             payment_currency=asset.currency,
             mappings=mappings,
-            now=now,
         )
+        quote_now = datetime.now(timezone.utc)
         quote = build_locked_quote(
             price_usd_minor=100,
             payment_decimals=asset.decimals,
             observations=observations,
-            now=now,
+            now=quote_now,
             admin_margin_bps=0,
         )
     except (ValueError, ArithmeticError):

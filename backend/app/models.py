@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
@@ -164,3 +164,79 @@ class UserSession(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+
+class ExchangeRate(Base):
+    """One independently sourced FX/crypto observation; never overwrite history."""
+    __tablename__ = "exchange_rates"
+    __table_args__ = (
+        CheckConstraint("units_per_base > 0", name="ck_exchange_rates_positive"),
+        CheckConstraint("valid_until > observed_at", name="ck_exchange_rates_valid_window"),
+        Index("ix_exchange_rates_pair_source_observed", "base_currency", "quote_currency", "source", "observed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    base_currency: Mapped[str] = mapped_column(String(12), nullable=False)
+    quote_currency: Mapped[str] = mapped_column(String(12), nullable=False)
+    units_per_base: Mapped[object] = mapped_column(Numeric(28, 12), nullable=False)
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by_admin_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class PaymentAsset(Base):
+    """A currency/network pair that may be offered for checkout after review."""
+    __tablename__ = "payment_assets"
+    __table_args__ = (
+        UniqueConstraint("currency", "network", name="uq_payment_assets_currency_network"),
+        CheckConstraint("decimals >= 0 AND decimals <= 18", name="ck_payment_assets_decimals"),
+        CheckConstraint("min_confirmations > 0", name="ck_payment_assets_confirmations"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    currency: Mapped[str] = mapped_column(String(12), nullable=False)
+    network: Mapped[str] = mapped_column(String(32), nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    decimals: Mapped[int] = mapped_column(Integer, nullable=False)
+    min_confirmations: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class PaymentIntent(Base):
+    """Immutable 15-minute payment quote; settlement is a separate later state."""
+    __tablename__ = "payment_intents"
+    __table_args__ = (
+        CheckConstraint("price_usd_minor > 0", name="ck_payment_intents_usd_price_positive"),
+        CheckConstraint("payment_amount_minor > 0", name="ck_payment_intents_amount_positive"),
+        CheckConstraint("units_per_usd > 0", name="ck_payment_intents_rate_positive"),
+        CheckConstraint("rate_spread_bps >= 0", name="ck_payment_intents_spread_nonnegative"),
+        CheckConstraint("admin_margin_bps >= 0", name="ck_payment_intents_margin_nonnegative"),
+        CheckConstraint("quote_expires_at > quote_issued_at", name="ck_payment_intents_expiry_after_issue"),
+        Index("ix_payment_intents_user_status_expiry", "telegram_user_id", "status", "quote_expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    plan_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    price_usd_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    payment_currency: Mapped[str] = mapped_column(String(12), nullable=False)
+    payment_network: Mapped[str] = mapped_column(String(32), nullable=False)
+    payment_amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    payment_decimals: Mapped[int] = mapped_column(Integer, nullable=False)
+    units_per_usd: Mapped[object] = mapped_column(Numeric(28, 12), nullable=False)
+    source_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    rate_spread_bps: Mapped[int] = mapped_column(Integer, nullable=False)
+    admin_margin_bps: Mapped[int] = mapped_column(Integer, nullable=False)
+    quote_issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    quote_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    payment_first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    transaction_hash: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="quoted", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)

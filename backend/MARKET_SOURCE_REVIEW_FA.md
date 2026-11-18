@@ -120,3 +120,54 @@
 **منبع ثانویه — فقط برای سرنخ، نه تأیید نهایی**
 - CoinPaprika Bitstamp markets: https://coinpaprika.com/exchange/Bitstamp
 
+
+
+## بررسی منابع جایگزین Bitstamp — ۱۸ نوامبر ۲۰۲۶
+
+هدف این بررسی یافتن جایگزینی برای مصرف تجاری در R&MA است، نه صرفاً API عمومی که از نظر فنی پاسخ می‌دهد. وجود endpoint عمومی به‌تنهایی مجوز تجاری محسوب نمی‌شود.
+
+### نامزدهای صرافی مستقیم
+
+| منبع | شواهد فنی بازار | وضعیت مجوز تجاری بر اساس اسناد عمومی | تصمیم فعلی |
+|---|---|---|---|
+| Gemini | فهرست رسمی زنده نمادها شامل `usdtusd` و `usdcusd` است؛ هر دو دارایی جفت مستقیم USD دارند. API رسمی Ticker و Symbols مستند است. | Market Data Agreement استفاده عمومی را به personal/internal، informational و analysis محدود می‌کند؛ استفاده تجاری نیازمند تماس با `bizdev@gemini.com` و توافق جداگانه است. | بهترین نامزد مستقیم برای استعلام کتبی؛ تا مجوز کتبی غیرفعال |
+| Bitfinex | فهرست رسمی جفت‌ها نمادهای `USTUSD` و `UDCUSD` را نشان می‌دهد. API ticker، bid و ask را ارائه می‌کند. نام‌های UST/UDC باید با پاسخ رسمی asset metadata و Ticker تطبیق داده شوند؛ نباید آن‌ها را بدون بررسی به USDT/USDC نگاشت کرد. | اسناد عمومی API استفاده را مشروط به API Terms می‌کنند. صفحه رسمی Market Data Terms و API Terms در بررسی متنی فعلی مفاد قابل اتکایی درباره مجوز استفاده تجاری از ticker عمومی نشان نداد؛ قرارداد Bitfinex Terminal جداگانه استفاده را به مصارف داخلی محدود و توزیع/فروش را ممنوع می‌کند، اما نباید آن قرارداد را خودکار معادل مجوز REST API فرض کرد. | نامزد فنی مشروط؛ قبل از هر استفاده تجاری باید پاسخ کتبی درباره public REST ticker و commercial internal pricing دریافت شود |
+| Crypto.com Exchange | API رسمی Exchange v1 دارای endpointهای بازار و فهرست instrument است؛ لازم است وجود جفت‌های spot مستقیم USDT/USD و USDC/USD در کاتالوگ زنده جداگانه اثبات شود. | شرایط رسمی Exchange Materials، شامل API و Exchange Market Data، استفاده برای نفع اشخاص دیگر و تجاری‌سازی/سودبرداری را بدون رضایت کتبی و توافق دوجانبه منع می‌کند. | بدون توافق کتبی، گزینه مجاز محسوب نمی‌شود |
+| OKX | API عمومی بازار در دسترس است. | API Agreement استفاده از Market Data را به استفاده شخصی و غیرتجاری محدود می‌کند و عرضه/نمایش به ثالث را بدون رضایت کتبی منع می‌کند. | بدون مجوز کتبی کنار گذاشته شود |
+
+### ارائه‌دهندگان داده تجاری مستقل از صرافی
+
+| ارائه‌دهنده | قابلیت مستند | مجوز/هزینه عمومی | تناسب با R&MA |
+|---|---|---|---|
+| CoinGecko API | داده تجمیعی از صدها صرافی، REST/WebSocket و قیمت‌های دارایی؛ planهای تجاری دارای داده Real-time هستند. | صفحه قیمت‌گذاری، مجوز تجاری را در پلن‌های Analyst و بالاتر اعلام می‌کند؛ قیمت اعلام‌شده Analyst برابر 129 دلار ماهانه با پرداخت ماهانه و 103.20 دلار ماهانه در پرداخت سالانه در زمان بررسی است. مجوز استاندارد اجازه استفاده از داده در محصول پولی را می‌دهد، اما فروش/بازنشر خود API یا داده خام را مجاز نمی‌کند و attribution لازم دارد. | گزینه جایگزین قراردادی محتمل برای مرجع تجمیعی/کنترل قیمت؛ نه جایگزین یک صرافی مستقل و نه منبع bid/ask صرافی واحد |
+| CoinAPI | مستندات محصول، Level 1 best bid/ask، Level 2 order book و داده صدها صرافی را معرفی می‌کند. | صفحه قیمت‌گذاری، پلن Startup را 79 دلار ماهانه نشان می‌دهد؛ توضیح رسمی CoinAPI استفاده تجاری در برنامه‌های پولی را مجاز می‌داند ولی فروش مجدد/بازنشر raw data را ممنوع می‌کند. دامنه دقیق مجوز باید با پلن و کاربرد واقعی R&MA تطبیق داده شود. | گزینه فنی قوی‌تر برای داده exchange-level/quotes؛ قبل از انتخاب، پوشش دقیق USDT/USD و USDC/USD، منبع constituent، حق استفاده برای محاسبه قیمت فاکتور و نمایش نتیجه، و شرایط بازنشر باید کتبی تأیید شود |
+| Kaiko | داده زنده best bid/ask، Level 1/2، stream و REST را برای بازارهای CeFi ارائه می‌کند. | قیمت‌گذاری سفارشی سازمانی و قرارداد استاندارد لایسنس دارد؛ قیمت عمومی ثابت اعلام نشده است. | گزینه سازمانی با قابلیت‌های قوی؛ احتمالاً پرهزینه‌تر، برای مرحله رشد یا نیاز به SLA بررسی شود |
+
+### نتیجه و مسیر پیشنهادی
+
+1. **اولویت اول برای جایگزین مستقیم صرافی:** استعلام Gemini برای مجوز کتبی استفاده تجاری از tickerهای `usdtusd` و `usdcusd`. وجود هر دو نماد در فهرست رسمی زنده تأیید شده، اما مجوز تجاری هنوز اخذ نشده است.
+2. **اولویت دوم:** استعلام Bitfinex درباره مجاز بودن مصرف REST public ticker صرفاً برای محاسبه داخلی نرخ و نیز تأیید رسمی معنای نمادهای `USTUSD` و `UDCUSD`. تا دریافت پاسخ روشن، استفاده ممنوع می‌ماند.
+3. **مسیر جایگزین در صورت عدم امکان اخذ مجوز از صرافی‌ها:** درخواست پیشنهاد تجاری از CoinAPI و بررسی CoinGecko Analyst/Enterprise. این مسیر نیازمند اصلاح معماری است: provider تجمیعی نباید به‌عنوان «صرافی سوم مستقل» ثبت شود؛ باید منبعی با نوع `aggregated_reference` و provenance مشخص باشد و الگوریتم consensus سه صرافی برای آن بدون بازطراحی و تست تغییر نکند.
+4. Crypto.com و OKX به‌دلیل محدودیت‌های صریح تجاری در شرایط عمومی، بدون توافق کتبی در فهرست گزینه‌های اجرایی قرار نمی‌گیرند.
+5. اگر هیچ منبع سوم با مجوز معتبر و کیفیت کافی پیدا نشود، سیاست امن فعلی حفظ می‌شود: وقتی Coinbase و Kraken در محدوده مجاز توافق دارند، quote با همان دو منبع اصلی ساخته شود؛ اگر اختلاف آن‌ها از آستانه عبور کند و منبع سوم مجاز و تازه موجود نباشد، صدور quote متوقف شود. هرگز داده غیرمجاز یا قیمت تخمینی به‌عنوان fallback استفاده نشود.
+
+### منابع رسمی این بررسی
+
+- Gemini Market Data Agreement: https://www.gemini.com/legal/market-data-agreement
+- Gemini List Symbols: https://developer.gemini.com/trading/rest-api/market-data/list-symbols
+- Gemini REST Market Data: https://developer.gemini.com/trading/rest-api/market-data
+- Bitfinex public pair catalog: https://api-pub.bitfinex.com/v2/conf/pub:list:pair:exchange
+- Bitfinex ticker documentation: https://docs.bitfinex.com/reference/rest-public-tickers
+- Bitfinex API Terms: https://www.bitfinex.com/legal/general/api-terms/
+- Bitfinex Market Data Terms: https://www.bitfinex.com/legal/general/market-data/
+- Crypto.com Exchange API: https://exchange-developer.crypto.com/exchange/v1/docs/api/rest/crypto-com-exchange-api-v-1
+- Crypto.com Exchange Terms: https://static2.crypto.com/exchange/assets/documents/tnc.pdf
+- OKX API Agreement: https://www.okx.com/help/okx-api-agreement
+- CoinAPI pricing: https://www.coinapi.io/products/market-data-api/pricing
+- CoinAPI commercial use explanation: https://www.coinapi.io/blog/coinapi-data-commercial-use-policy
+- CoinAPI data types: https://www.coinapi.io/products/flat-files/faq
+- CoinGecko API pricing and commercial license: https://www.coingecko.com/en/api/pricing
+- Kaiko pricing and licensing: https://www.kaiko.com/about-kaiko/pricing-and-contracts
+- Kaiko data dictionary: https://docs.kaiko.com/explore-our-data/data-dictionary
+
+این بررسی فقط مستندسازی و تحقیق است. هیچ API جدیدی به مسیر قیمت‌دهی وصل نشده، هیچ کلید یا اشتراک پولی ایجاد نشده، هیچ مجوزی فرض یا فعال نشده و هیچ PaymentAsset یا mapping تغییر نکرده است.

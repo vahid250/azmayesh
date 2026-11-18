@@ -119,6 +119,15 @@
         return r.json();
       });
     },
+    publicPaymentAssets: function () {
+      return fetch(apiBase() + "/v1/public/payment-assets", {
+        headers: { "Accept": "application/json" },
+        cache: "no-store"
+      }).then(function (response) {
+        if (!response.ok) throw new Error("Payment assets unavailable: " + response.status);
+        return response.json();
+      });
+    },
     publicPaymentRate: function (currency, network) {
       const params = new URLSearchParams({
         currency: String(currency || "").trim(),

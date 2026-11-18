@@ -20,6 +20,9 @@ from app.wireguard import (
 )
 from app.telegram_bot import router as telegram_router
 from app import models  # noqa: F401 - register ORM metadata
+from app.models import PaymentAsset
+from app.market_mappings import load_enabled_market_specs, fetch_payment_asset_observations
+from app.quote_engine import build_locked_quote
 
 
 app = FastAPI(title="R&MA Backend Lab", version="0.5.0")
@@ -414,6 +417,93 @@ def list_active_plans(db: Session = Depends(get_db)):
         }
         for plan in plans
     ]
+
+
+@app.get("/api/v1/public/payment-rate")
+async def public_payment_rate(
+    currency: str,
+    network: str,
+    db: Session = Depends(get_db),
+):
+    """Return a live, validated display rate and the independent quote benchmark.
+
+    This endpoint is informational only: it creates no invoice, deposit address,
+    payment intent, or order. Client-supplied rates are never accepted.
+    """
+    payment_currency = currency.strip().upper()
+    payment_network = network.strip().upper()
+    if (
+        not payment_currency
+        or len(payment_currency) > 12
+        or not payment_network
+        or len(payment_network) > 32
+    ):
+        raise HTTPException(status_code=422, detail="Payment asset selection is invalid")
+
+    asset = db.execute(
+        select(PaymentAsset).where(
+            PaymentAsset.currency == payment_currency,
+            PaymentAsset.network == payment_network,
+            PaymentAsset.is_enabled.is_(True),
+        )
+    ).scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Payment asset or network is not available")
+
+    try:
+        mappings = load_enabled_market_specs(
+            db,
+            payment_asset_id=asset.id,
+            payment_currency=asset.currency,
+        )
+        now = datetime.now(timezone.utc)
+        observations = await fetch_payment_asset_observations(
+            payment_currency=asset.currency,
+            mappings=mappings,
+            now=now,
+        )
+        quote = build_locked_quote(
+            price_usd_minor=100,
+            payment_decimals=asset.decimals,
+            observations=observations,
+            now=now,
+            admin_margin_bps=0,
+        )
+    except (ValueError, ArithmeticError):
+        raise HTTPException(
+            status_code=503,
+            detail="A validated market rate is temporarily unavailable",
+        ) from None
+    except Exception:
+        # Network and provider failures must not leak internal details.
+        raise HTTPException(
+            status_code=503,
+            detail="A validated market rate is temporarily unavailable",
+        ) from None
+
+    best_row = next(
+        row for row in quote.source_snapshot if row["best_display_rate"]
+    )
+    return {
+        "currency": asset.currency,
+        "network": asset.network,
+        "display_rate": {
+            "meaning": "USD value of one payment-asset unit",
+            "usd_per_unit": best_row["usd_per_payment_unit"],
+            "source": best_row["source"],
+            "observed_at": best_row["observed_at"],
+        },
+        "quote_benchmark": {
+            "meaning": "USD value of one payment-asset unit at the accepted two-source mean",
+            "usd_per_unit": format(Decimal(1) / quote.units_per_usd, "f"),
+            "selected_sources": list(quote.selected_sources),
+            "spread_bps": quote.rate_spread_bps,
+        },
+        "source_snapshot": quote.source_snapshot,
+        "fetched_at": now,
+        "informational_only": True,
+        "invoice_rate_locked": False,
+    }
 
 
 @app.get("/api/v1/public/terms")

@@ -58,6 +58,18 @@ jobs:
         run: node ../frontend/check-dashboard.mjs
       - name: Run tests
         run: PYTHONPATH=. pytest -q
+      - name: Audit official exchange market catalogs (read-only)
+        run: |
+          python scripts/audit_exchange_catalogs.py --output market-catalog-audit.json
+          echo "----- MARKET CATALOG AUDIT (JSON) -----"
+          cat market-catalog-audit.json
+      - name: Upload read-only market catalog report
+        uses: actions/upload-artifact@v4
+        with:
+          name: rma-market-catalog-audit
+          path: backend/market-catalog-audit.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Set up Python 3.13 for Cloudflare Workers
         uses: actions/setup-python@v5
         with:

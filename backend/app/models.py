@@ -212,6 +212,8 @@ class PaymentAsset(Base):
 class PaymentIntent(Base):
     """Immutable 15-minute payment quote; settlement is a separate later state."""
     __tablename__ = "payment_intents"
+    # Nullable during the additive rollout; new checkout intents will link to an order.
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="RESTRICT"), nullable=True, index=True)
     __table_args__ = (
         CheckConstraint("price_usd_minor > 0", name="ck_payment_intents_usd_price_positive"),
         CheckConstraint("payment_amount_minor > 0", name="ck_payment_intents_amount_positive"),

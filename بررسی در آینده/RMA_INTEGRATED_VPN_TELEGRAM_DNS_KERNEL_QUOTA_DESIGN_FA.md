@@ -91,6 +91,14 @@ Telegram API مستند می‌کند که دستگاه می‌تواند با `
 - ایجاد/به‌روزرسانی quota و map باید atomic و versioned باشد؛ تغییر entitlement/peer نباید لحظه‌ای مسیر بدون quota ایجاد کند.
 - در صورت نبود kernel module/config مربوط به NFT_QUOTA، نسخهٔ hard-enforcement باید fail deployment شود؛ silent fallback به poll metering مجاز نیست.
 
+### 5.3 نکتهٔ حیاتی دربارهٔ ترتیب ruleها و packet عبورکننده از سقف
+
+- قرار دادن quota expression در یک rule به‌تنهایی کافی نیست؛ وقتی quota از حد عبور کند، آن rule دیگر match نمی‌شود و ارزیابی به rule بعدی می‌رود. اگر بعداً یک `accept` عمومی وجود داشته باشد، ممکن است packet ناخواسته پذیرفته شود.
+- مسیر quota-controlled باید chain اختصاصی با policy برابر `drop` داشته باشد؛ تنها ruleهای مجازکننده باید همان ruleهایی باشند که quota object مشترک را بررسی می‌کنند. هیچ broad ACCEPT بعد از rule quota نباید بتواند آن را دور بزند.
+- برای هر packet فقط یک بار quota object مربوط به entitlement باید ارزیابی شود. دو جهت با شرط‌های غیرهم‌پوشان source/destination peer IP پوشش داده شوند.
+- kernel quota از `atomic64_add_return(skb->len)` استفاده می‌کند و سپس نتیجه را با سقف مقایسه می‌کند. packetی که مجموع را از سقف عبور می‌دهد، باید در همان مسیر رد شود؛ مقدار داخلی شمارنده ممکن است شامل طول packet ردشده باشد. بنابراین شمارندهٔ kernel را بدون reconciliation، عیناً به‌عنوان بایت قابل‌فروش کاربر نمایش ندهیم.
+- packetهایی که پیش از depletion از hook عبور کرده‌اند ممکن است هنوز در صف شبکه باشند و بعدتر روی رابط بیرونی ارسال شوند. معیار سخت‌گیرانه باید «هیچ packet جدیدی پس از depletion از hook quota پذیرفته نشود» باشد؛ تأخیر تخلیهٔ صف‌ها نیز در آزمون عملی اندازه‌گیری شود.
+
 ### 5.3 محدودیت‌ها و خطرهای nftables
 
 1. quota بر اساس `skb->len` در hook انتخابی حساب می‌کند؛ تعریف آن لزوماً با WireGuard peer transfer counters یا حجم قابل‌نمایش/قابل‌فروش یکسان نیست. باید با packet capture و test traffic، نقطهٔ اندازه‌گیری و overhead دقیق تعریف شود.

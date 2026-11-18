@@ -93,6 +93,11 @@ def test_order_snapshots_usd_price_and_quote_links_to_owned_order(db):
     assert intent.status == "quoted"
     assert intent.quote_expires_at - intent.quote_issued_at == timedelta(minutes=15)
     assert intent.source_snapshot
+    best_display_rows = [row for row in intent.source_snapshot if row["best_display_rate"]]
+    assert len(best_display_rows) == 1
+    assert best_display_rows[0]["source"] == "coinbase"
+    assert best_display_rows[0]["display_eligible"] is True
+    assert Decimal(best_display_rows[0]["usd_per_payment_unit"]) == Decimal("0.9995002498750624687656171914")
     assert db.execute(select(PaymentIntent)).scalars().all() == [intent]
 
 

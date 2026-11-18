@@ -77,8 +77,8 @@ up() {
   ip netns exec "$GW" nft -f - <<'NFT'
 table inet rma_lab {
   # One aggregate quota for A+B; C has an independent quota.
-  quota shared_ab { until 1 mbytes; }
-  quota isolated_c { until 1 mbytes; }
+  quota shared_ab { until 64 kbytes; }
+  quota isolated_c { until 64 kbytes; }
 
   chain forward {
     type filter hook forward priority filter; policy drop;

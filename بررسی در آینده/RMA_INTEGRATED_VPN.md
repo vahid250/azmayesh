@@ -214,3 +214,14 @@ Mini App نقش control plane و رابط مدیریت را دارد؛ اپ هم
 backend مصرف حسابداری را از quota بالاتر نمی‌برد و interval کامل را برای audit نگه می‌دارد؛ با این حال، این به معنی جلوگیری فیزیکی از انتقال بایت اضافه نیست. quota مشترک چند دستگاه نیز باید در هر راهکار enforcement آینده به‌صورت aggregate کنترل شود. پیشنهادها: refresh فوری registry پس از exhaustion، poll کوتاه‌تر مخصوص Integrated VPN و بررسی kernel-level enforcement در آزمایشگاه؛ هیچ‌یک هنوز پیاده‌سازی یا انتخاب نهایی نشده‌اند.
 
 این سند فقط ممیزی و طراحی است؛ هیچ تنظیم، کد، migration، agent، peer، firewall یا سروری تغییر نکرده است.
+
+
+## طراحی Telemetry، Handshake و وضعیت واقعی اتصال
+
+ممیزی مسیر status فعلی و parser خروجی WireGuard انجام شد و طرح مستقل ثبت شد:
+
+[R&MA Integrated VPN — Status, Handshake & Telemetry Design](RMA_INTEGRATED_VPN_STATUS_HANDSHAKE_TELEMETRY_DESIGN_FA.md)
+
+یافتهٔ کلیدی: تابع status فعلی عمداً handshake و counter زنده را تأیید نمی‌کند؛ parser میزبان نیز timestamp آخرین handshake را هنوز نادیده می‌گیرد. طرح جدید، وضعیت‌های provisioned/registered/handshake/traffic/verified/stale/offline/revoked را از هم جدا می‌کند، telemetry را در قرارداد Host Agent V2 با peer_ref و agent_id نسخه‌دار می‌سازد و از نمایش «متصل» بر اساس پاسخ provisioning یا counter تاریخی جلوگیری می‌کند.
+
+نکتهٔ محصولی: handshake تازه و عبور بسته‌ها، سلامت تونل را نشان می‌دهد؛ به‌تنهایی ثابت نمی‌کند سرویس Telegram یا ورود حساب کاربر در دسترس است. متن رابط باید دقیقاً همین مرز را رعایت کند. این سند فقط طراحی است؛ parser، API، مدل، migration، UI و میزبان تغییر نکرده‌اند.

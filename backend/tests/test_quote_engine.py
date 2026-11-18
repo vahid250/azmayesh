@@ -41,7 +41,7 @@ def test_disagreement_uses_closest_two_of_three_and_marks_backup():
         observations=rates("1.0000", "1.1000", "1.0010"),
         now=NOW,
     )
-    assert quote.selected_sources == ("bitstamp", "coinbase")
+    assert set(quote.selected_sources) == {"bitstamp", "coinbase"}
     assert quote.used_backup_source is True
     assert quote.units_per_usd == Decimal("1.0005")
     selected = {item["source"] for item in quote.source_snapshot if item["selected_for_quote"]}

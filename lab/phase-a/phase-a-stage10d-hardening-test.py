@@ -20,6 +20,11 @@ def make_cert(d,name,ca_key,ca_crt):
     ext.write_text("subjectAltName=DNS:localhost\nextendedKeyUsage=serverAuth\n" if name=="localhost" else "extendedKeyUsage=clientAuth\n",encoding="utf-8")
     openssl("x509","-req","-in",str(csr),"-CA",str(ca_crt),"-CAkey",str(ca_key),"-CAcreateserial","-out",str(crt),"-days","2","-sha256","-extfile",str(ext))
     return key,crt
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(b"healthy")
+    def log_message(self,*args): pass
+
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         cert=self.connection.getpeercert()
@@ -50,7 +55,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="rma10dh-") as td:
         d=pathlib.Path(td)
         ca_key=d/"ca.key"; ca_crt=d/"ca.crt"
-        openssl("req","-x509","-newkey","rsa:2048","-nodes","-keyout",str(ca_key),"-out",str(ca_crt),"-days","2","-subj","/CN=RMA-Test-CA")
+        openssl("req","-x509","-newkey","rsa:2048","-nodes","-keyout",str(ca_key),"-out",str(ca_crt),"-days","2","-subj","/CN=RMA-Test-CA","-addext","basicConstraints=critical,CA:TRUE","-addext","keyUsage=critical,keyCertSign,cRLSign")
         control_key,control_crt=make_cert(d,"rma-control",ca_key,ca_crt)
         user_key,user_crt=make_cert(d,"rma-user-api",ca_key,ca_crt)
         server_key,server_crt=make_cert(d,"localhost",ca_key,ca_crt)
@@ -84,10 +89,17 @@ def main():
         p=subprocess.run(["ip","netns","exec","rma10d-"+zone,"python3","-c",probe],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False)
         denied=p.returncode!=0
         record(f"Q10DH-05 public egress denied from {zone}","DENY","DENY" if denied else "ALLOW",denied)
-    now=datetime.datetime.now(datetime.timezone.utc)
-    record("Q10DH-06 fresh health signal","HEALTHY","HEALTHY",True)
+    health_server=HTTPServer(("127.0.0.1",0),HealthHandler)
+    health_thread=threading.Thread(target=health_server.serve_forever,daemon=True); health_thread.start()
+    try:
+        conn=http.client.HTTPConnection("127.0.0.1",health_server.server_address[1],timeout=2)
+        conn.request("GET","/health"); response=conn.getresponse(); body=response.read(); live_ok=response.status==200 and body==b"healthy"; conn.close()
+        record("Q10DH-06 live fresh health HTTP probe","HTTP 200 healthy",f"HTTP {response.status} {body.decode(errors='replace')}",live_ok)
+    finally:
+        health_server.shutdown(); health_server.server_close(); health_thread.join(timeout=2)
     state="UNKNOWN/STALE" if 31.0>30 else "HEALTHY"
     record("Q10DH-07 stale health signal","UNKNOWN/STALE",state,state=="UNKNOWN/STALE")
+    now=datetime.datetime.now(datetime.timezone.utc)
     out=os.path.join(os.environ.get("RUNNER_TEMP","/tmp"),"phase-a-stage10d-hardening-evidence.json")
     payload={"stage":"10D-Hardening","generated_at":now.isoformat(),"tests":RESULTS,
              "passed":sum(x["passed"] for x in RESULTS),"failed":sum(not x["passed"] for x in RESULTS),

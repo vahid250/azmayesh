@@ -52,3 +52,22 @@ A passing local smoke test is not a production approval.
 - Stage 10 is being developed on the isolated branch `security/phase-10-defense-in-depth`; it does not change the Phase A baseline branch or production infrastructure.
 - Sub-stages 10B–10H will add trusted identity binding, database privilege hardening, service/network segmentation, VPN tenant isolation, CI/CD hardening, incident response, and independent review.
 - No claim of complete intrusion prevention is made; the objective is to contain compromise and prevent lateral movement.
+
+
+## Stage 10B — Identity binding and authorization boundary
+
+Stage 10B introduces an issuer+subject to internal-account mapping in
+`quota-identity-binding.sql`. The API gateway receives only EXECUTE on the
+resolver function; it cannot read or mutate the mapping table. An untrusted
+client role cannot execute the resolver. Unknown, revoked, wrong-issuer, and
+suspended-account mappings fail closed.
+
+The CI tests Q30–Q35 run against disposable PostgreSQL. They validate SQL
+privileges and the identity-binding contract, **not** real JWT verification.
+The trusted API must independently verify JWT signature, issuer, audience,
+expiry, and other required claims before calling the resolver. The gateway
+must not accept identity claims or account IDs from an untrusted request body.
+A compromised gateway can still supply fabricated resolver arguments; this
+stage is defense in depth, not proof of production authentication.
+
+No production Neon project, credentials, or customer traffic is modified.

@@ -18,11 +18,12 @@ def start_server(zone,port,ready):
     return subprocess.Popen(["ip","netns","exec",ns(zone),"python3","-c",code],
                             stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)
 def connect(zone,ip,port,expect,label):
-    ok=False
-    try:
-        with socket.socket() as s:
-            s.settimeout(1.2); s.connect((ip,port)); ok=True
-    except OSError: pass
+    probe=("import socket,sys; s=socket.socket(); s.settimeout(1.2); "
+           "try:\\n s.connect((sys.argv[1],int(sys.argv[2]))); sys.exit(0)\\n"
+           "except OSError: sys.exit(1)")
+    result=subprocess.run(["ip","netns","exec",ns(zone),"python3","-c",probe,ip,str(port)],
+                          check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    ok=(result.returncode==0)
     if ok != expect:
         raise AssertionError(f"{label}: expected {'ALLOW' if expect else 'DENY'}, got {'ALLOW' if ok else 'DENY'}")
     print(f"PASS: {label}: {'allowed' if ok else 'denied'}")

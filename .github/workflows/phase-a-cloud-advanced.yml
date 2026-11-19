@@ -2,6 +2,12 @@ name: Phase A cloud advanced tests
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - cloud-lab/phase-a-github-runner
+    paths:
+      - "lab/phase-a/**"
+      - ".github/workflows/phase-a-cloud-advanced.yml"
   push:
     branches:
       - cloud-lab/phase-a-github-runner

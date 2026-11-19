@@ -85,7 +85,7 @@ CREATE OR REPLACE FUNCTION record_rma_quota_usage_for_identity(
 )
 RETURNS TABLE(accepted boolean, duplicate boolean, used_bytes bigint, quota_bytes bigint)
 LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog, public, pg_temp
 SET row_security = on
 AS $$
 DECLARE v_account_id text;

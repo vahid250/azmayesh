@@ -57,6 +57,7 @@ wait "$PA"; wait "$PB"; wait "$PC"
 ip netns exec "$A" python3 "$UDP4" send --port 44030 --count 1 --payload-size 1200 --interval 0
 ip netns exec "$B" python3 "$UDP4" send --port 44030 --count 1 --payload-size 424 --interval 0
 wait "$SERVER_PID"
+PIDS=()
 cat "$TMP/multi-user.json"
 python3 - "$TMP/multi-user.json" <<'CHECK'
 import json, sys
@@ -91,6 +92,7 @@ for round in $(seq 1 6); do
   ip netns exec "$A" python3 "$UDP4" send --port 44031 --count 1 --payload-size 1200 --interval 0
   ip netns exec "$B" python3 "$UDP4" send --port 44031 --count 1 --payload-size 424 --interval 0
   wait "$SOAK_PID"
+  PIDS=()
   python3 - "$TMP/soak-$round.json" <<'CHECK'
 import json, sys
 d=json.load(open(sys.argv[1], encoding="utf-8"))
@@ -117,6 +119,7 @@ REC_PID=$!; PIDS+=("$REC_PID")
 wait_ready "$REC_PID" "$TMP/recovery.ready"
 ip netns exec "$A" python3 "$UDP4" send --port 44032 --count 3 --interval 0.01
 wait "$REC_PID"
+PIDS=()
 python3 - "$TMP/recovery.json" <<'CHECK'
 import json, sys
 d=json.load(open(sys.argv[1], encoding="utf-8"))

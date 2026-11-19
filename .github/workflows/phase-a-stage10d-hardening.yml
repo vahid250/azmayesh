@@ -1,0 +1,52 @@
+name: Phase A Stage 10D-Hardening
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - security/phase-10d-hardening
+    paths:
+      - "lab/phase-a/phase-a-stage10d-hardening-test.py"
+      - ".github/workflows/phase-a-stage10d-hardening.yml"
+  pull_request:
+    paths:
+      - "lab/phase-a/phase-a-stage10d-hardening-test.py"
+      - ".github/workflows/phase-a-stage10d-hardening.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  stage10d-hardening:
+    name: Stage 10D-Hardening — workload identity, fail-closed, egress, evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install isolated network tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y iproute2 nftables openssl
+          python3 --version
+          openssl version
+      - name: Run Stage 10D-Hardening tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          LOG="$RUNNER_TEMP/phase-a-stage10d-hardening.log"
+          cleanup() { sudo bash lab/phase-a/phase-a-stage10d-lab.sh down || true; }
+          trap cleanup EXIT
+          sudo bash lab/phase-a/phase-a-stage10d-lab.sh up
+          sudo -E python3 lab/phase-a/phase-a-stage10d-hardening-test.py 2>&1 | tee "$LOG"
+      - name: Upload complete Stage 10D-Hardening evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-a-stage10d-hardening-evidence
+          path: |
+            \${{ runner.temp }}/phase-a-stage10d-hardening.log
+            \${{ runner.temp }}/phase-a-stage10d-hardening-evidence.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -45,3 +45,10 @@ A passing local smoke test is not a production approval.
 - `record_account_quota_usage` resolves the active entitlement before recording usage.
 - `phase-a-stage9-test.py` checks suspension/closure, expiry, monthly rollover, and plan changes.
 - Authentication, payment verification, authorization-role hardening, and production deployment remain out of scope for this disposable CI stage.
+
+## Stage 10 — defense-in-depth security architecture
+
+- `STAGE10-SECURITY-ARCHITECTURE.md` defines the trust zones, network boundaries, least-privilege rules, threat-to-control matrix, and staged security acceptance criteria.
+- Stage 10 is being developed on the isolated branch `security/phase-10-defense-in-depth`; it does not change the Phase A baseline branch or production infrastructure.
+- Sub-stages 10B–10H will add trusted identity binding, database privilege hardening, service/network segmentation, VPN tenant isolation, CI/CD hardening, incident response, and independent review.
+- No claim of complete intrusion prevention is made; the objective is to contain compromise and prevent lateral movement.

@@ -119,3 +119,52 @@ jobs:
           path: ${{ runner.temp }}/phase-a-stage8.log
           if-no-files-found: warn
           retention-days: 7
+
+  phase-a-account-lifecycle:
+    name: Phase A Stage 9 — account lifecycle and entitlements
+    needs: phase-a-accounting
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rma_test
+          POSTGRES_PASSWORD: rma_test_password
+          POSTGRES_DB: rma_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rma_test -d rma_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://rma_test:rma_test_password@localhost:5432/rma_test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned PostgreSQL driver
+        run: python -m pip install "psycopg[binary]==3.2.9"
+
+      - name: Run account lifecycle and entitlement tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          LOG="$RUNNER_TEMP/phase-a-stage9.log"
+          python lab/phase-a/phase-a-stage9-test.py 2>&1 | tee "$LOG"
+
+      - name: Upload Stage 9 test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-a-stage9-log
+          path: ${{ runner.temp }}/phase-a-stage9.log
+          if-no-files-found: warn
+          retention-days: 7

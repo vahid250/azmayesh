@@ -48,7 +48,9 @@ jobs:
             sudo bash lab/phase-a/phase-a-advanced-test.sh
             echo "=== exact quota-boundary tests ==="
             sudo bash lab/phase-a/phase-a-boundary-test.sh
-            echo "=== TCP quota tests ==="\n            sudo bash lab/phase-a/phase-a-tcp-test.sh\n            echo "=== all configured tests completed ==="
+            echo "=== TCP quota tests ==="\n            sudo bash lab/phase-a/phase-a-tcp-test.sh\n            echo "=== TCP quota tests ==="
+            sudo bash lab/phase-a/phase-a-tcp-test.sh
+            echo "=== all configured tests completed ==="
           } 2>&1 | tee "$LOG"
 
       - name: Upload Stage 4 test log
@@ -56,6 +58,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: phase-a-stage4-log
-          path: ${{ runner.temp }}/phase-a-stage3.log
+          path: ${{ runner.temp }}/phase-a-stage4.log
           if-no-files-found: warn
           retention-days: 7

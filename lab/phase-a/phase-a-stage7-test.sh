@@ -74,7 +74,9 @@ for addr, want in expected.items():
 print("PASS: A+B delivered exactly 54 packets/64024 payload bytes at their shared 64-KiB wire quota; C independently delivered 30/30.")
 CHECK
 grep -q 'used 64 kbytes' <<<"$(quota_shared)" || die "shared A+B quota did not reach 64 KiB"
-grep -q 'used 36 kbytes' <<<"$(quota_c)" || die "C independent quota did not record its 30 packets"
+C_QUOTA="$(quota_c)"
+printf '%s\n' "$C_QUOTA"
+grep -Eq 'used 36840 bytes|used 36 kbytes' <<<"$C_QUOTA" || die "C independent quota did not record its 30 packets (expected 36840 bytes)"
 echo "PASS: concurrent users did not leak quota usage across account groups."
 
 echo "[Q-17] Repeated sustained quota cycles (6 rounds)"

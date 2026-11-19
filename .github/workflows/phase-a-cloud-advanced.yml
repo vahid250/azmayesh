@@ -1,0 +1,59 @@
+name: Phase A cloud advanced tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cloud-lab/phase-a-github-runner
+    paths:
+      - "lab/phase-a/**"
+      - ".github/workflows/phase-a-cloud-advanced.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  phase-a-advanced:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install isolated-lab tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y iproute2 nftables iputils-ping
+          python3 --version
+          ip -Version
+          nft --version
+
+      - name: Run baseline and advanced Phase A tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          LOG="$RUNNER_TEMP/phase-a-advanced.log"
+          cleanup() {
+            sudo bash lab/phase-a/phase-a-lab.sh down || true
+          }
+          trap cleanup EXIT
+          {
+            echo "=== create isolated topology ==="
+            sudo bash lab/phase-a/phase-a-lab.sh up
+            echo "=== baseline UDP quota tests ==="
+            sudo bash lab/phase-a/phase-a-traffic-test.sh
+            echo "=== concurrent quota stress tests ==="
+            sudo bash lab/phase-a/phase-a-advanced-test.sh
+            echo "=== all configured tests completed ==="
+          } 2>&1 | tee "$LOG"
+
+      - name: Upload advanced test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-a-advanced-log
+          path: ${{ runner.temp }}/phase-a-advanced.log
+          if-no-files-found: warn
+          retention-days: 7

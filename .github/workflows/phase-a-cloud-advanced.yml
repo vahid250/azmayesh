@@ -2,9 +2,16 @@ name: Phase A cloud advanced tests
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - cloud-lab/phase-a-github-runner
+    paths:
+      - "lab/phase-a/**"
+      - ".github/workflows/phase-a-cloud-advanced.yml"
   push:
     branches:
       - cloud-lab/phase-a-github-runner
+      - security/phase-10-defense-in-depth
     paths:
       - "lab/phase-a/**"
       - ".github/workflows/phase-a-cloud-advanced.yml"
@@ -69,9 +76,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  # Database stages run independently of the network-namespace lab so a transient
+  # packet-receiver timing issue cannot suppress database security evidence.
   phase-a-accounting:
     name: Phase A Stage 8 — durable quota accounting
-    needs: phase-a-advanced
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:
@@ -168,3 +176,135 @@ jobs:
           path: ${{ runner.temp }}/phase-a-stage9.log
           if-no-files-found: warn
           retention-days: 7
+
+
+  phase-a-identity-binding:
+    name: Phase A Stage 10B — identity binding and authorization boundary
+    needs: phase-a-account-lifecycle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rma_test
+          POSTGRES_PASSWORD: rma_test_password
+          POSTGRES_DB: rma_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rma_test -d rma_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://rma_test:rma_test_password@localhost:5432/rma_test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned PostgreSQL driver
+        run: python -m pip install "psycopg[binary]==3.2.9"
+      - name: Run Stage 10B identity-binding tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          LOG="$RUNNER_TEMP/phase-a-stage10b.log"
+          python lab/phase-a/phase-a-stage10b-test.py 2>&1 | tee "$LOG"
+      - name: Upload Stage 10B test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-a-stage10b-log
+          path: ${{ runner.temp }}/phase-a-stage10b.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  phase-a-db-hardening:
+    name: Phase A Stage 10C — database hardening and tenant isolation
+    needs: phase-a-identity-binding
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rma_test
+          POSTGRES_PASSWORD: rma_test_password
+          POSTGRES_DB: rma_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rma_test -d rma_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://rma_test:rma_test_password@localhost:5432/rma_test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned PostgreSQL driver
+        run: python -m pip install "psycopg[binary]==3.2.9"
+      - name: Run Stage 10C database hardening tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          LOG="$RUNNER_TEMP/phase-a-stage10c.log"
+          python lab/phase-a/phase-a-stage10c-test.py 2>&1 | tee "$LOG"
+      - name: Upload Stage 10C test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-a-stage10c-log
+          path: ${{ runner.temp }}/phase-a-stage10c.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  phase-a-service-segmentation:
+    name: Phase A Stage 10D — API and service segmentation
+    needs: phase-a-db-hardening
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install isolated namespace tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y iproute2 nftables
+          python3 --version
+          ip -Version
+          nft --version
+      - name: Run Stage 10D allow/deny matrix
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          LOG="$RUNNER_TEMP/phase-a-stage10d.log"
+          cleanup() { sudo bash lab/phase-a/phase-a-stage10d-lab.sh down || true; }
+          trap cleanup EXIT
+          sudo bash lab/phase-a/phase-a-stage10d-lab.sh up
+          sudo -E python3 lab/phase-a/phase-a-stage10d-test.py 2>&1 | tee "$LOG"
+          echo "=== Verify teardown and clean default-deny rebuild ==="
+          sudo bash lab/phase-a/phase-a-stage10d-lab.sh down
+          sudo bash lab/phase-a/phase-a-stage10d-lab.sh up
+          sudo ip netns exec rma10d-router nft list chain inet rma10d forward | grep -q 'policy drop'
+          sudo -E python3 lab/phase-a/phase-a-stage10d-test.py 2>&1 | tee -a "$LOG"
+      - name: Upload Stage 10D evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-a-stage10d-evidence
+          path: |
+            ${{ runner.temp }}/phase-a-stage10d.log
+            ${{ runner.temp }}/phase-a-stage10d-evidence.json
+          if-no-files-found: warn
+          retention-days: 14

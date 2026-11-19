@@ -28,7 +28,7 @@ def connect(zone,ip,port,expect,label):
 def main():
     procs=[]; probes=[]
     endpoints=[("api",8080),("control",8443),("db",5432),("control",9443),
-               ("control",9444),("control",9445),("vpn_peer",9445),("api",9100),("control",9100),
+               ("control",9444),("control",9445),("vpn",9445),("vpn_peer",9445),("api",9100),("control",9100),
                ("control",9200),("ci",9000)]
     try:
         for z,p in endpoints:
@@ -55,6 +55,8 @@ def main():
         connect("edge",IPS["db"],5432,False,"Q10D-02 edge -> database blocked")
         connect("edge",IPS["control"],9443,False,"Q10D-02 edge -> admin API blocked")
         connect("api",IPS["control"],9443,False,"Q10D-04 user API -> admin API blocked")
+        connect("api",IPS["control"],9444,False,"Q10D-04 user API -> admin management blocked")
+        connect("api",IPS["vpn"],9445,False,"Q10D-04 user API -> VPN node management blocked")
         connect("api",IPS["db"],5432,False,"Q10D-04 user API -> database blocked")
         for dest,port,label in [("db",5432,"database"),("control",9443,"admin"),
                                 ("ci",9000,"CI"),("vpn_peer",9445,"peer management")]:
@@ -65,6 +67,9 @@ def main():
         connect("api",IPS["ci"],9000,False,"Q10D-09 user API -> CI blocked")
         connect("admin",IPS["db"],5432,False,"Q10D-07 admin plane -> database blocked")
         connect("admin",IPS["ci"],9000,False,"Q10D-07 admin plane -> CI blocked")
+        connect("admin",IPS["api"],8080,False,"Q10D-07 admin plane -> public user API blocked")
+        connect("admin",IPS["control"],8443,False,"Q10D-07 admin plane -> user control API blocked")
+        connect("admin",IPS["vpn"],9445,False,"Q10D-07 admin plane -> VPN node management blocked")
         # Policy reset/rebuild is tested by a clean namespace teardown and recreation in workflow.
         print("PASS: Q10D-10 policy is default-drop; clean rebuild is verified by workflow teardown/re-up.")
         # Dependency failure is modeled as explicit deny in policy decision helper.

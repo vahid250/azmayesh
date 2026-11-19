@@ -4,8 +4,8 @@ set -Eeuo pipefail
 # Only the router namespace owns nftables forwarding policy; host firewall is untouched.
 readonly ROUTER="rma10d-router"
 readonly TABLE="rma10d"
-declare -A IDX=( [edge]=1 [api]=2 [control]=3 [admin]=4 [monitor]=5 [vpn]=6 [db]=7 [ci]=8 [rogue]=9 )
-zones=(edge api control admin monitor vpn db ci rogue)
+declare -A IDX=( [edge]=1 [api]=2 [control]=3 [admin]=4 [monitor]=5 [vpn]=6 [db]=7 [ci]=8 [rogue]=9 [vpn_peer]=10 ]
+zones=(edge api control admin monitor vpn db ci rogue vpn_peer)
 exists_ns(){ ip netns list | awk '{print $1}' | grep -Fxq "$1"; }
 cleanup(){ for z in "${zones[@]}"; do exists_ns "rma10d-$z" && ip netns del "rma10d-$z" || true; done; exists_ns "$ROUTER" && ip netns del "$ROUTER" || true; }
 need_root(){ [[ $EUID -eq 0 ]] || { echo "Run with sudo/root" >&2; exit 1; }; }

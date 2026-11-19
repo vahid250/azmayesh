@@ -176,7 +176,7 @@ BEGIN
     v_period_key := to_char(p_now AT TIME ZONE 'UTC', 'YYYY-MM');
     INSERT INTO quota_periods(account_id, period_key, quota_bytes)
     VALUES (p_account_id, v_period_key, v_quota)
-    ON CONFLICT (account_id, period_key) DO NOTHING;
+    ON CONFLICT ON CONSTRAINT quota_periods_pkey DO NOTHING;
 
     RETURN QUERY
     SELECT qp.period_key, qp.quota_bytes, qp.used_bytes

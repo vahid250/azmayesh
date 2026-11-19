@@ -65,7 +65,7 @@ wait_ready "${PIDS[-1]}" "$TMP/reverse.ready"
 # Prime both IPv6 neighbor-cache hops before the measured burst; discard warm-up bytes.
 ip netns exec "$SINK" ping -6 -c 1 -W 2 fd10:10:1::2 >/dev/null || die "IPv6 reverse-path warm-up failed"
 quota_reset
-ip netns exec "$SINK" python3 "$PY" send --destination fd10:10:1::2 --port 44011 --count 100 --interval 0.001
+ip netns exec "$SINK" python3 "$PY" send --destination fd10:10:1::2 --port 44011 --count 100 --interval 0.01
 wait "${PIDS[-1]}"
 cat "$TMP/ipv6-reverse.json"
 quota_show
@@ -88,9 +88,9 @@ ip netns exec "$A" python3 "$PY" serve --bind fd10:10:1::2 --port 44013 --durati
 PIDS+=("$!")
 A_PID="${PIDS[-1]}"
 wait_ready "$A_PID" "$TMP/mixed-reverse.ready"
-ip netns exec "$A" python3 "$PY" send --port 44012 --count 26 --interval 0
-ip netns exec "$SINK" python3 "$PY" send --destination fd10:10:1::2 --port 44013 --count 26 --interval 0
-ip netns exec "$A" python3 "$PY" send --port 44012 --count 1 --interval 0
+ip netns exec "$A" python3 "$PY" send --port 44012 --count 26 --interval 0.005
+ip netns exec "$SINK" python3 "$PY" send --destination fd10:10:1::2 --port 44013 --count 26 --interval 0.005
+ip netns exec "$A" python3 "$PY" send --port 44012 --count 1 --interval 0.005
 wait "$SINK_PID"
 wait "$A_PID"
 cat "$TMP/mixed-forward.json"

@@ -30,11 +30,11 @@ jobs:
           ip -Version
           nft --version
 
-      - name: Run Phase A tests through Stage 6
+      - name: Run Phase A tests through Stage 7
         shell: bash
         run: |
           set -Eeuo pipefail
-          LOG="$RUNNER_TEMP/phase-a-stage6.log"
+          LOG="$RUNNER_TEMP/phase-a-stage7.log"
           cleanup() {
             sudo bash lab/phase-a/phase-a-lab.sh down || true
           }
@@ -52,17 +52,19 @@ jobs:
             sudo bash lab/phase-a/phase-a-tcp-test.sh
             echo "=== IPv6 and bidirectional tests ==="
             sudo bash lab/phase-a/phase-a-ipv6-test.sh
-            echo "=== Stage 6 mixed-family, bypass-resistance, and fail-closed tests ==="
-            sudo bash lab/phase-a/phase-a-stage6-test.sh
+            echo "=== Stage 7 mixed-family, bypass-resistance, and fail-closed tests ==="
+            sudo bash lab/phase-a/phase-a-stage7-test.sh
+            echo "=== Stage 7 multi-user, sustained-load, and recovery tests ==="
+            sudo bash lab/phase-a/phase-a-stage7-test.sh
             echo "=== all configured tests completed ==="
           } 2>&1 | tee "$LOG"
 
-      - name: Upload Stage 6 test log
+      - name: Upload Stage 7 test log
 
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase-a-stage6-log
-          path: ${{ runner.temp }}/phase-a-stage6.log
+          name: phase-a-stage7-log
+          path: ${{ runner.temp }}/phase-a-stage7.log
           if-no-files-found: warn
           retention-days: 7

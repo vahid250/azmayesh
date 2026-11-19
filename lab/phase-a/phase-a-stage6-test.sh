@@ -114,6 +114,7 @@ SEND_STATUS=0
 ip netns exec "$A" python3 "$UDP4" send --port 44024 --count 5 --interval 0.01 || SEND_STATUS=$?
 echo "Client send exit status with link down: $SEND_STATUS (a local network-unreachable error is acceptable)"
 ip -n "$A" link set a0 up
+ip -n "$A" route replace default via 10.10.1.1 dev a0
 wait "$LINK_PID"
 python3 - "$TMP/link-down.json" <<'CHECK'
 import json, sys

@@ -155,10 +155,11 @@ def main():
           %s,%s,%s,11,now())""",
           ("https://issuer.example","stage10c-sub-a",shared_event)).fetchone()[0]
         check(a_result,True,"tenant A initial idempotent event accepted")
+    # Use the privileged CI observer connection only for before/after assertions.
+    # The quota service itself must retain zero direct table-read privileges.
     with connect() as c:
-        c.execute("SET ROLE rma_quota_service")
-        before=scalar(c,"""SELECT used_bytes FROM public.quota_periods
-          WHERE account_id='stage10c-b' AND period_key=to_char(now() AT TIME ZONE 'UTC','YYYY-MM')""")
+        before=scalar(c,"""SELECT coalesce((SELECT used_bytes FROM public.quota_periods
+          WHERE account_id='stage10c-b' AND period_key=to_char(now() AT TIME ZONE 'UTC','YYYY-MM')),0)""")
     def cross_tenant_replay():
         with connect() as c:
             c.execute("SET ROLE rma_quota_service")
@@ -166,9 +167,10 @@ def main():
               %s,%s,%s,11,now())""",
               ("https://issuer.example","stage10c-sub-b",shared_event)).fetchall()
     denied(cross_tenant_replay,"cross-tenant idempotency replay denied")
+    # Observe the final state as the isolated CI test administrator, not as a runtime role.
     with connect() as c:
-        after=scalar(c,"""SELECT used_bytes FROM public.quota_periods
-          WHERE account_id='stage10c-b' AND period_key=to_char(now() AT TIME ZONE 'UTC','YYYY-MM')""")
+        after=scalar(c,"""SELECT coalesce((SELECT used_bytes FROM public.quota_periods
+          WHERE account_id='stage10c-b' AND period_key=to_char(now() AT TIME ZONE 'UTC','YYYY-MM')),0)""")
         check(after,before,"tenant B quota unchanged after cross-tenant replay")
 
     print("[Q48] Runtime function grants and forced-RLS coverage remain narrow")

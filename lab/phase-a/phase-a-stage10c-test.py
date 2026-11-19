@@ -102,7 +102,85 @@ def main():
             c.execute("SET SESSION AUTHORIZATION rma_quota_service")
             c.execute("SET ROLE rma_data_owner")
     denied(assume,"SET ROLE escalation denied")
-    print("Stage 10C database hardening tests Q36-Q42 passed.")
+
+    print("[Q43] SECURITY DEFINER functions pin a safe search_path with pg_temp last")
+    with connect() as c:
+        for signature in (
+            "resolve_rma_account(text,text)",
+            "record_rma_quota_usage_for_identity(text,text,uuid,bigint,timestamp with time zone)"
+        ):
+            cfg=scalar(c,"""SELECT proconfig FROM pg_proc
+              WHERE oid=%s::regprocedure""",(signature,))
+            check(any(x == "search_path=pg_catalog, public, pg_temp" for x in (cfg or [])),
+                  True,f"{signature} safe search_path")
+
+    print("[Q44] Temporary-object shadowing cannot alter quota identity processing")
+    with connect() as c:
+        c.execute("SET ROLE rma_quota_service")
+        c.execute("CREATE TEMP TABLE rma_accounts(account_id text, status text, updated_at timestamptz)")
+        c.execute("INSERT INTO rma_accounts VALUES ('stage10c-a','suspended',now())")
+        accepted=scalar(c,"""SELECT accepted FROM public.record_rma_quota_usage_for_identity(
+          %s,%s,%s,7,now())""",
+          ("https://issuer.example","stage10c-sub-a",str(uuid.uuid4())))
+        check(accepted,True,"temporary shadow table did not override trusted account table")
+
+    print("[Q45] Revoked identity bindings fail closed")
+    with connect() as c:
+        c.execute("""INSERT INTO rma_identity_bindings(issuer,subject,account_id,status)
+          VALUES ('https://issuer.example','stage10c-sub-revoked','stage10c-a','revoked')
+          ON CONFLICT(issuer,subject) DO UPDATE SET status='revoked'""")
+    def revoked_identity():
+        with connect() as c:
+            c.execute("SET ROLE rma_quota_service")
+            c.execute("""SELECT * FROM public.record_rma_quota_usage_for_identity(
+              %s,%s,%s,5,now())""",
+              ("https://issuer.example","stage10c-sub-revoked",str(uuid.uuid4()))).fetchall()
+    denied(revoked_identity,"revoked identity quota call denied")
+
+    print("[Q46] Invalid quota byte counts are rejected")
+    for bad_bytes in (0,-1):
+        def invalid_bytes(bad_bytes=bad_bytes):
+            with connect() as c:
+                c.execute("SET ROLE rma_quota_service")
+                c.execute("""SELECT * FROM public.record_rma_quota_usage_for_identity(
+                  %s,%s,%s,%s,now())""",
+                  ("https://issuer.example","stage10c-sub-a",str(uuid.uuid4()),bad_bytes)).fetchall()
+        denied(invalid_bytes,f"non-positive byte count {bad_bytes} denied")
+
+    print("[Q47] Cross-tenant idempotency-key reuse is rejected without charging tenant B")
+    shared_event=str(uuid.uuid4())
+    with connect() as c:
+        c.execute("SET ROLE rma_quota_service")
+        a_result=c.execute("""SELECT accepted FROM public.record_rma_quota_usage_for_identity(
+          %s,%s,%s,11,now())""",
+          ("https://issuer.example","stage10c-sub-a",shared_event)).fetchone()[0]
+        check(a_result,True,"tenant A initial idempotent event accepted")
+    with connect() as c:
+        c.execute("SET ROLE rma_quota_service")
+        before=scalar(c,"""SELECT used_bytes FROM public.quota_periods
+          WHERE account_id='stage10c-b' AND period_key=to_char(now() AT TIME ZONE 'UTC','YYYY-MM')""")
+    def cross_tenant_replay():
+        with connect() as c:
+            c.execute("SET ROLE rma_quota_service")
+            c.execute("""SELECT * FROM public.record_rma_quota_usage_for_identity(
+              %s,%s,%s,11,now())""",
+              ("https://issuer.example","stage10c-sub-b",shared_event)).fetchall()
+    denied(cross_tenant_replay,"cross-tenant idempotency replay denied")
+    with connect() as c:
+        after=scalar(c,"""SELECT used_bytes FROM public.quota_periods
+          WHERE account_id='stage10c-b' AND period_key=to_char(now() AT TIME ZONE 'UTC','YYYY-MM')""")
+        check(after,before,"tenant B quota unchanged after cross-tenant replay")
+
+    print("[Q48] Runtime function grants and forced-RLS coverage remain narrow")
+    with connect() as c:
+        check(scalar(c,"SELECT has_function_privilege('rma_quota_service','record_rma_quota_usage_for_identity(text,text,uuid,bigint,timestamptz)','EXECUTE')"),True,"quota service can call identity-scoped wrapper")
+        check(scalar(c,"SELECT has_function_privilege('rma_untrusted_client','record_rma_quota_usage_for_identity(text,text,uuid,bigint,timestamptz)','EXECUTE')"),False,"untrusted client cannot call quota wrapper")
+        check(scalar(c,"SELECT has_function_privilege('rma_auth_gateway','record_rma_quota_usage_for_identity(text,text,uuid,bigint,timestamptz)','EXECUTE')"),False,"auth gateway cannot call quota wrapper directly")
+        check(scalar(c,"""SELECT count(*) FROM pg_class
+          WHERE relname IN ('account_subscriptions','quota_periods','quota_events','account_audit_events')
+            AND relrowsecurity AND relforcerowsecurity"""),4,"all tenant tables have enabled and forced RLS")
+
+    print("Stage 10C database hardening tests Q36-Q48 passed.")
     print("RLS is defense in depth; verified JWT validation remains an API responsibility.")
 
 if __name__=="__main__": main()

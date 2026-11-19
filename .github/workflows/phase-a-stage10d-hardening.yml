@@ -46,7 +46,7 @@ jobs:
         with:
           name: phase-a-stage10d-hardening-evidence
           path: |
-            \${{ runner.temp }}/phase-a-stage10d-hardening.log
-            \${{ runner.temp }}/phase-a-stage10d-hardening-evidence.json
+            ${{ runner.temp }}/phase-a-stage10d-hardening.log
+            ${{ runner.temp }}/phase-a-stage10d-hardening-evidence.json
           if-no-files-found: warn
           retention-days: 14

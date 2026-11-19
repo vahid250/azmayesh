@@ -62,6 +62,9 @@ quota_reset
 ip netns exec "$A" python3 "$PY" serve --bind fd10:10:1::2 --port 44011 --duration 3 --output "$TMP/ipv6-reverse.json" --ready-file "$TMP/reverse.ready" &
 PIDS+=("$!")
 wait_ready "${PIDS[-1]}" "$TMP/reverse.ready"
+# Prime both IPv6 neighbor-cache hops before the measured burst; discard warm-up bytes.
+ip netns exec "$SINK" ping -6 -c 1 -W 2 fd10:10:1::2 >/dev/null || die "IPv6 reverse-path warm-up failed"
+quota_reset
 ip netns exec "$SINK" python3 "$PY" send --destination fd10:10:1::2 --port 44011 --count 100 --interval 0.001
 wait "${PIDS[-1]}"
 cat "$TMP/ipv6-reverse.json"

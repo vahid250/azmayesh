@@ -267,3 +267,44 @@ jobs:
           path: ${{ runner.temp }}/phase-a-stage10c.log
           if-no-files-found: warn
           retention-days: 7
+
+  phase-a-service-segmentation:
+    name: Phase A Stage 10D — API and service segmentation
+    needs: phase-a-db-hardening
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install isolated namespace tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y iproute2 nftables
+          python3 --version
+          ip -Version
+          nft --version
+      - name: Run Stage 10D allow/deny matrix
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          LOG="$RUNNER_TEMP/phase-a-stage10d.log"
+          cleanup() { sudo bash lab/phase-a/phase-a-stage10d-lab.sh down || true; }
+          trap cleanup EXIT
+          sudo bash lab/phase-a/phase-a-stage10d-lab.sh up
+          sudo -E python3 lab/phase-a/phase-a-stage10d-test.py 2>&1 | tee "$LOG"
+          echo "=== Verify teardown and clean default-deny rebuild ==="
+          sudo bash lab/phase-a/phase-a-stage10d-lab.sh down
+          sudo bash lab/phase-a/phase-a-stage10d-lab.sh up
+          sudo ip netns exec rma10d-router nft list chain inet rma10d forward | grep -q 'policy drop'
+          sudo -E python3 lab/phase-a/phase-a-stage10d-test.py 2>&1 | tee -a "$LOG"
+      - name: Upload Stage 10D evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-a-stage10d-evidence
+          path: |
+            ${{ runner.temp }}/phase-a-stage10d.log
+            ${{ runner.temp }}/phase-a-stage10d-evidence.json
+          if-no-files-found: warn
+          retention-days: 14

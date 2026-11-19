@@ -76,9 +76,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  # Database stages run independently of the network-namespace lab so a transient
+  # packet-receiver timing issue cannot suppress database security evidence.
   phase-a-accounting:
     name: Phase A Stage 8 — durable quota accounting
-    needs: phase-a-advanced
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     services:

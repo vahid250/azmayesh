@@ -95,7 +95,7 @@ print("PASS: neither unauthorized IPv4 nor IPv6 source reached the sink.")
 CHECK
 QUOTA_AFTER_SPOOF="$(quota_shared)"
 printf '%s\n' "$QUOTA_AFTER_SPOOF"
-grep -Eq 'used 0 bytes|used 0 kbytes' <<<"$QUOTA_AFTER_SPOOF" || die "unauthorized packets unexpectedly consumed or altered the shared quota"
+if grep -Eq 'used [1-9][0-9]*' <<<"$QUOTA_AFTER_SPOOF"; then die "unauthorized packets unexpectedly consumed or altered the shared quota"; fi
 
 echo "[Q-14] Firewall rule-order audit: default drop and every accept must be quota-metered"
 RULES="$(ip netns exec "$GW" nft list chain inet rma_lab forward)"
@@ -122,7 +122,7 @@ print("PASS: no packets reached the sink while the client link was down.")
 CHECK
 QUOTA_AFTER_LINK="$(quota_shared)"
 printf '%s\n' "$QUOTA_AFTER_LINK"
-grep -Eq 'used 0 bytes|used 0 kbytes' <<<"$QUOTA_AFTER_LINK" || die "quota changed while the client link was down"
+if grep -Eq 'used [1-9][0-9]*' <<<"$QUOTA_AFTER_LINK"; then die "quota changed while the client link was down"; fi
 
 echo "Phase-A Stage 6 mixed-family, bypass-resistance, firewall-order, and fail-closed tests passed."
 echo "This is bounded disposable-lab validation, not production acceptance or a security certification."

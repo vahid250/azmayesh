@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - cloud-lab/phase-a-github-runner
+      - security/phase-10-defense-in-depth
     paths:
       - "lab/phase-a/**"
       - ".github/workflows/phase-a-cloud-advanced.yml"

@@ -30,6 +30,8 @@ def serve(args):
 
 def send(args):
     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    if args.source:
+        sock.bind((args.source, 0))
     payload = b"RMA-IPV6-PHASE-A" + (b"x" * (args.payload_size - 16))
     for _ in range(args.count):
         sock.sendto(payload, (args.destination, args.port))
@@ -49,6 +51,7 @@ def main():
     server.add_argument("--ready-file")
     client = sub.add_parser("send")
     client.add_argument("--destination", default="fd10:10:4::2")
+    client.add_argument("--source", help="Optional source IPv6 address for controlled spoof-resistance tests.")
     client.add_argument("--port", type=int, default=44010)
     client.add_argument("--count", type=int, default=100)
     client.add_argument("--payload-size", type=int, default=1200)

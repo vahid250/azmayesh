@@ -3,7 +3,7 @@
 from __future__ import annotations
 import json, os, socket, subprocess, time
 ROOT=os.path.dirname(__file__)
-ZONES=("edge","api","control","admin","monitor","vpn","db","ci","rogue")
+ZONES=("edge","api","control","admin","monitor","vpn","db","ci","rogue","vpn_peer")
 IPS={z:f"10.20.{i}.2" for i,z in enumerate(ZONES,1)}
 def ns(z): return "rma10d-"+z
 def run(*args,check=True):
@@ -28,7 +28,7 @@ def connect(zone,ip,port,expect,label):
 def main():
     procs=[]; probes=[]
     endpoints=[("api",8080),("control",8443),("db",5432),("control",9443),
-               ("control",9444),("control",9445),("api",9100),("control",9100),
+               ("control",9444),("control",9445),("vpn_peer",9445),("api",9100),("control",9100),
                ("control",9200),("ci",9000)]
     try:
         for z,p in endpoints:
@@ -57,12 +57,14 @@ def main():
         connect("api",IPS["control"],9443,False,"Q10D-04 user API -> admin API blocked")
         connect("api",IPS["db"],5432,False,"Q10D-04 user API -> database blocked")
         for dest,port,label in [("db",5432,"database"),("control",9443,"admin"),
-                                ("ci",9000,"CI"),("vpn",9445,"peer management")]:
+                                ("ci",9000,"CI"),("vpn_peer",9445,"peer management")]:
             connect("vpn",IPS[dest],port,False,f"Q10D-06 VPN data plane -> {label} blocked")
         connect("monitor",IPS["control"],9200,False,"Q10D-08 monitoring mutation endpoint blocked")
         connect("rogue",IPS["control"],8443,False,"Q10D-09 unregistered service identity blocked")
         connect("api",IPS["control"],65530,False,"Q10D-09 unknown destination port blocked")
         connect("api",IPS["ci"],9000,False,"Q10D-09 user API -> CI blocked")
+        connect("admin",IPS["db"],5432,False,"Q10D-07 admin plane -> database blocked")
+        connect("admin",IPS["ci"],9000,False,"Q10D-07 admin plane -> CI blocked")
         # Policy reset/rebuild is tested by a clean namespace teardown and recreation in workflow.
         print("PASS: Q10D-10 policy is default-drop; clean rebuild is verified by workflow teardown/re-up.")
         # Dependency failure is modeled as explicit deny in policy decision helper.

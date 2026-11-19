@@ -40,9 +40,9 @@ quota_reset
 ip netns exec "$SINK" python3 "$PY" serve --port 44010 --duration 3 --output "$TMP/ipv6-forward.json" --ready-file "$TMP/forward.ready" &
 PIDS+=("$!")
 wait_ready "${PIDS[-1]}" "$TMP/forward.ready"
-ip netns exec "$A" python3 "$PY" send --port 44010 --count 100 --interval 0.001 &
+ip netns exec "$A" python3 "$PY" send --port 44010 --count 100 --interval 0.01 &
 PA=$!
-ip netns exec "$B" python3 "$PY" send --port 44010 --count 100 --interval 0.001 &
+ip netns exec "$B" python3 "$PY" send --port 44010 --count 100 --interval 0.01 &
 PB=$!
 wait "$PA"; wait "$PB"
 wait "${PIDS[-1]}"

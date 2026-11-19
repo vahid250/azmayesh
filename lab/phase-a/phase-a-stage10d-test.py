@@ -18,7 +18,7 @@ def start_server(zone,port,ready):
     return subprocess.Popen(["ip","netns","exec",ns(zone),"python3","-c",code],
                             stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)
 def connect(zone,ip,port,expect,label):
-    probe="import socket,sys\\ns=socket.socket()\\ns.settimeout(1.2)\\ntry:\\n s.connect((sys.argv[1],int(sys.argv[2])))\\n sys.exit(0)\\nexcept OSError:\\n sys.exit(1)"
+    probe="import socket,sys\ns=socket.socket()\ns.settimeout(1.2)\ntry:\n s.connect((sys.argv[1],int(sys.argv[2])))\n sys.exit(0)\nexcept OSError:\n sys.exit(1)"
     result=subprocess.run(["ip","netns","exec",ns(zone),"python3","-c",probe,ip,str(port)],
                           check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     ok=(result.returncode==0)

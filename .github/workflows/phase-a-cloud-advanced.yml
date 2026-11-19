@@ -34,7 +34,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          LOG="$RUNNER_TEMP/phase-a-stage3.log"
+          LOG="$RUNNER_TEMP/phase-a-stage4.log"
           cleanup() {
             sudo bash lab/phase-a/phase-a-lab.sh down || true
           }
@@ -48,14 +48,14 @@ jobs:
             sudo bash lab/phase-a/phase-a-advanced-test.sh
             echo "=== exact quota-boundary tests ==="
             sudo bash lab/phase-a/phase-a-boundary-test.sh
-            echo "=== all configured tests completed ==="
+            echo "=== TCP quota tests ==="\n            sudo bash lab/phase-a/phase-a-tcp-test.sh\n            echo "=== all configured tests completed ==="
           } 2>&1 | tee "$LOG"
 
-      - name: Upload Stage 3 test log
+      - name: Upload Stage 4 test log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase-a-stage3-log
+          name: phase-a-stage4-log
           path: ${{ runner.temp }}/phase-a-stage3.log
           if-no-files-found: warn
           retention-days: 7

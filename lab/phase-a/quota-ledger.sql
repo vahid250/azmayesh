@@ -55,9 +55,13 @@ BEGIN
 
     IF v_inserted = 0 THEN
         SELECT * INTO v_existing FROM quota_events WHERE event_id = p_event_id;
-        IF v_existing.account_id <> p_account_id
-           OR v_existing.period_key <> p_period_key
-           OR v_existing.bytes <> p_bytes THEN
+        -- Null-safe comparison is required because forced RLS can hide
+        -- a globally conflicting event owned by another tenant. A hidden row
+        -- yields NULL fields; NULL must be treated as a mismatch, not allowed
+        -- to bypass this rejection.
+        IF v_existing.account_id IS DISTINCT FROM p_account_id
+           OR v_existing.period_key IS DISTINCT FROM p_period_key
+           OR v_existing.bytes IS DISTINCT FROM p_bytes THEN
             RAISE EXCEPTION 'idempotency key reused with different request data';
         END IF;
         SELECT qp.used_bytes, qp.quota_bytes

@@ -30,17 +30,17 @@ jobs:
           ip -Version
           nft --version
 
-      - name: Run baseline, concurrency, and exact-boundary Phase A tests
+      - name: Run Phase A tests through Stage 5
         shell: bash
         run: |
           set -Eeuo pipefail
-          LOG="$RUNNER_TEMP/phase-a-stage4.log"
+          LOG="$RUNNER_TEMP/phase-a-stage5.log"
           cleanup() {
             sudo bash lab/phase-a/phase-a-lab.sh down || true
           }
           trap cleanup EXIT
           {
-            echo "=== create isolated topology ==="
+            echo "=== create isolated IPv4 + IPv6 topology ==="
             sudo bash lab/phase-a/phase-a-lab.sh up
             echo "=== baseline UDP quota tests ==="
             sudo bash lab/phase-a/phase-a-traffic-test.sh
@@ -48,16 +48,19 @@ jobs:
             sudo bash lab/phase-a/phase-a-advanced-test.sh
             echo "=== exact quota-boundary tests ==="
             sudo bash lab/phase-a/phase-a-boundary-test.sh
-            echo "=== TCP quota tests ==="\n            sudo bash lab/phase-a/phase-a-tcp-test.sh\n            echo "=== TCP quota tests ==="
+            echo "=== TCP quota tests ==="
             sudo bash lab/phase-a/phase-a-tcp-test.sh
+            echo "=== IPv6 and bidirectional tests ==="
+            sudo bash lab/phase-a/phase-a-ipv6-test.sh
             echo "=== all configured tests completed ==="
           } 2>&1 | tee "$LOG"
 
-      - name: Upload Stage 4 test log
+      - name: Upload Stage 5 test log
+
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase-a-stage4-log
-          path: ${{ runner.temp }}/phase-a-stage4.log
+          name: phase-a-stage5-log
+          path: ${{ runner.temp }}/phase-a-stage5.log
           if-no-files-found: warn
           retention-days: 7

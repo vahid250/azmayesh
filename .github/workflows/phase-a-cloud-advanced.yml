@@ -52,8 +52,8 @@ jobs:
             sudo bash lab/phase-a/phase-a-tcp-test.sh
             echo "=== IPv6 and bidirectional tests ==="
             sudo bash lab/phase-a/phase-a-ipv6-test.sh
-            echo "=== Stage 7 mixed-family, bypass-resistance, and fail-closed tests ==="
-            sudo bash lab/phase-a/phase-a-stage7-test.sh
+            echo "=== Stage 6 mixed-family, bypass-resistance, and fail-closed tests ==="
+            sudo bash lab/phase-a/phase-a-stage6-test.sh
             echo "=== Stage 7 multi-user, sustained-load, and recovery tests ==="
             sudo bash lab/phase-a/phase-a-stage7-test.sh
             echo "=== all configured tests completed ==="

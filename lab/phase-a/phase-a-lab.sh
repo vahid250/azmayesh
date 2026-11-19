@@ -73,7 +73,24 @@ up() {
   ip -n "$SINK" route add 10.10.2.0/30 via 10.10.4.1
   ip -n "$SINK" route add 10.10.3.0/30 via 10.10.4.1
 
+  # Add a private ULA IPv6 overlay to the same isolated links.
+  ip -6 -n "$A" addr add fd10:10:1::2/64 dev a0
+  ip -6 -n "$GW" addr add fd10:10:1::1/64 dev ga0
+  ip -6 -n "$B" addr add fd10:10:2::2/64 dev b0
+  ip -6 -n "$GW" addr add fd10:10:2::1/64 dev gb0
+  ip -6 -n "$C" addr add fd10:10:3::2/64 dev c0
+  ip -6 -n "$GW" addr add fd10:10:3::1/64 dev gc0
+  ip -6 -n "$GW" addr add fd10:10:4::1/64 dev gs0
+  ip -6 -n "$SINK" addr add fd10:10:4::2/64 dev s0
+  ip -6 -n "$A" route add fd10:10:4::/64 via fd10:10:1::1
+  ip -6 -n "$B" route add fd10:10:4::/64 via fd10:10:2::1
+  ip -6 -n "$C" route add fd10:10:4::/64 via fd10:10:3::1
+  ip -6 -n "$SINK" route add fd10:10:1::/64 via fd10:10:4::1
+  ip -6 -n "$SINK" route add fd10:10:2::/64 via fd10:10:4::1
+  ip -6 -n "$SINK" route add fd10:10:3::/64 via fd10:10:4::1
+
   ip netns exec "$GW" sysctl -q -w net.ipv4.ip_forward=1
+  ip netns exec "$GW" sysctl -q -w net.ipv6.conf.all.forwarding=1
   ip netns exec "$GW" nft -f - <<'NFT'
 table inet rma_lab {
   # One aggregate quota for A+B; C has an independent quota.
@@ -92,6 +109,14 @@ table inet rma_lab {
     # C must not consume or inherit A+B quota.
     ip saddr 10.10.3.2 ip daddr 10.10.4.2 quota name "isolated_c" counter accept
     ip saddr 10.10.4.2 ip daddr 10.10.3.2 quota name "isolated_c" counter accept
+
+    # IPv6 paths use the same aggregate and independent quota objects.
+    ip6 saddr fd10:10:1::2 ip6 daddr fd10:10:4::2 quota name "shared_ab" counter accept
+    ip6 saddr fd10:10:2::2 ip6 daddr fd10:10:4::2 quota name "shared_ab" counter accept
+    ip6 saddr fd10:10:4::2 ip6 daddr fd10:10:1::2 quota name "shared_ab" counter accept
+    ip6 saddr fd10:10:4::2 ip6 daddr fd10:10:2::2 quota name "shared_ab" counter accept
+    ip6 saddr fd10:10:3::2 ip6 daddr fd10:10:4::2 quota name "isolated_c" counter accept
+    ip6 saddr fd10:10:4::2 ip6 daddr fd10:10:3::2 quota name "isolated_c" counter accept
   }
 }
 NFT

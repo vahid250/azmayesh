@@ -75,7 +75,7 @@ CHECK
 echo "[Q-13] Spoofed/unauthorized source addresses must not bypass metered rules"
 reset_shared
 ip -n "$A" addr add 10.10.1.6/32 dev a0
-ip -6 -n "$A" addr add fd10:10:1::99/128 dev a0
+ip -6 -n "$A" addr add fd10:10:1::99/128 dev a0 nodad
 ip netns exec "$SINK" python3 "$UDP4" serve --port 44022 --duration 3 --output "$TMP/spoof-v4.json" --ready-file "$TMP/spoof-v4.ready" &
 PIDS+=("$!"); SV4_PID="${PIDS[-1]}"
 ip netns exec "$SINK" python3 "$UDP6" serve --port 44023 --duration 3 --output "$TMP/spoof-v6.json" --ready-file "$TMP/spoof-v6.ready" &

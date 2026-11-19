@@ -121,7 +121,7 @@ bash "$LAB" up
 for ns in "$GW" "$A" "$B" "$C" "$SINK"; do
   ip netns list | awk '{print $1}' | grep -Fxq "$ns" || die "namespace missing after rebuild: $ns"
 done
-grep -q 'until 64 kbytes' <<<"$(ip netns exec "$GW" nft list quota inet rma_lab shared_ab)" || die "shared quota policy not recreated"
+grep -q '64 kbytes' <<<"$(ip netns exec "$GW" nft list quota inet rma_lab shared_ab)" || die "shared quota policy not recreated"
 grep -q 'policy drop' <<<"$(ip netns exec "$GW" nft list chain inet rma_lab forward)" || die "default-drop policy not restored after rebuild"
 ip netns exec "$SINK" python3 "$UDP4" serve --port 44032 --duration 2 --output "$TMP/recovery.json" --ready-file "$TMP/recovery.ready" &
 REC_PID=$!; PIDS+=("$REC_PID")

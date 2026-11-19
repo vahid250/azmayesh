@@ -43,6 +43,13 @@ quota_shared() { ip netns exec "$GW" nft list quota inet rma_lab shared_ab; }
 quota_c() { ip netns exec "$GW" nft list quota inet rma_lab isolated_c; }
 
 echo "[Q-16] Three simultaneous virtual users: A+B share a cap; C remains independent"
+# Restore client links and routes after the preceding fail-closed test.
+ip -n "$A" link set a0 up
+ip -n "$A" route replace default via 10.10.1.1 dev a0
+ip -n "$B" link set b0 up
+ip -n "$B" route replace default via 10.10.2.1 dev b0
+ip -n "$C" link set c0 up
+ip -n "$C" route replace default via 10.10.3.1 dev c0
 reset_quotas
 ip netns exec "$SINK" python3 "$UDP4" serve --port 44030 --duration 5 --output "$TMP/multi-user.json" --ready-file "$TMP/multi-user.ready" &
 SERVER_PID=$!; PIDS+=("$SERVER_PID")

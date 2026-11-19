@@ -99,7 +99,7 @@ def main():
     denied(create,"runtime CREATE denied")
     def assume():
         with connect() as c:
-            c.execute("SET ROLE rma_quota_service")
+            c.execute("SET SESSION AUTHORIZATION rma_quota_service")
             c.execute("SET ROLE rma_data_owner")
     denied(assume,"SET ROLE escalation denied")
     print("Stage 10C database hardening tests Q36-Q42 passed.")

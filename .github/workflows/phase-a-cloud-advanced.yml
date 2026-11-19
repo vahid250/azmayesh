@@ -63,6 +63,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: phase-a-stage6-log
-          path: ${{ runner.temp }}/phase-a-stage5.log
+          path: ${{ runner.temp }}/phase-a-stage6.log
           if-no-files-found: warn
           retention-days: 7

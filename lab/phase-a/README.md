@@ -30,3 +30,18 @@ The test deliberately uses broad packet-count acceptance bounds to detect shared
 The `phase-a-static.yml` workflow checks Bash and Python syntax when Phase A files change. Static CI does not execute network namespaces or nftables rules.
 
 A passing local smoke test is not a production approval.
+
+
+## Stage 8 — durable usage ledger
+
+- `quota-ledger.sql` stores quota periods and idempotent usage events in PostgreSQL.
+- `record_quota_usage` atomically applies usage against the account-period cap.
+- `phase-a-stage8-test.py` verifies duplicate-event handling, concurrent cap enforcement, restart persistence, and fail-closed behavior.
+
+## Stage 9 — account lifecycle and entitlements
+
+- `quota-account-lifecycle.sql` adds account status, quota plans, subscription windows, and audit events.
+- `ensure_current_quota_period` provisions a UTC calendar-month quota from the active subscription without resetting an existing period.
+- `record_account_quota_usage` resolves the active entitlement before recording usage.
+- `phase-a-stage9-test.py` checks suspension/closure, expiry, monthly rollover, and plan changes.
+- Authentication, payment verification, authorization-role hardening, and production deployment remain out of scope for this disposable CI stage.

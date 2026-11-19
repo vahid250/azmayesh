@@ -71,3 +71,11 @@ A compromised gateway can still supply fabricated resolver arguments; this
 stage is defense in depth, not proof of production authentication.
 
 No production Neon project, credentials, or customer traffic is modified.
+
+
+## Stage 10C — database privilege hardening
+
+- `quota-db-hardening.sql` separates object ownership from runtime identities, removes PUBLIC and runtime table access, and exposes quota usage only through an identity-scoped SECURITY DEFINER wrapper.
+- Forced row-level security scopes subscription, quota-period, quota-event, and audit rows to the wrapper's transaction-local account context. The custom setting is not an authentication credential; direct table access remains revoked.
+- `phase-a-stage10c-test.py` verifies owner-role attributes, role membership boundaries, direct table/function denial, tenant RLS, and privilege-escalation rejection (Q36–Q42).
+- CI uses a disposable PostgreSQL 16 service. No production database is modified. JWT verification remains the responsibility of the trusted API gateway.

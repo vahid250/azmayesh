@@ -30,11 +30,11 @@ jobs:
           ip -Version
           nft --version
 
-      - name: Run baseline and advanced Phase A tests
+      - name: Run baseline, concurrency, and exact-boundary Phase A tests
         shell: bash
         run: |
           set -Eeuo pipefail
-          LOG="$RUNNER_TEMP/phase-a-advanced.log"
+          LOG="$RUNNER_TEMP/phase-a-stage3.log"
           cleanup() {
             sudo bash lab/phase-a/phase-a-lab.sh down || true
           }
@@ -46,14 +46,16 @@ jobs:
             sudo bash lab/phase-a/phase-a-traffic-test.sh
             echo "=== concurrent quota stress tests ==="
             sudo bash lab/phase-a/phase-a-advanced-test.sh
+            echo "=== exact quota-boundary tests ==="
+            sudo bash lab/phase-a/phase-a-boundary-test.sh
             echo "=== all configured tests completed ==="
           } 2>&1 | tee "$LOG"
 
-      - name: Upload advanced test log
+      - name: Upload Stage 3 test log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase-a-advanced-log
-          path: ${{ runner.temp }}/phase-a-advanced.log
+          name: phase-a-stage3-log
+          path: ${{ runner.temp }}/phase-a-stage3.log
           if-no-files-found: warn
           retention-days: 7

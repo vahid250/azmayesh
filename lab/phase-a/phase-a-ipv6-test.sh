@@ -48,13 +48,14 @@ wait "$PA"; wait "$PB"
 wait "${PIDS[-1]}"
 cat "$TMP/ipv6-forward.json"
 quota_show
+quota_show | grep -q "used 64 kbytes" || die "IPv6 shared quota did not reach its configured cap"
 python3 - "$TMP/ipv6-forward.json" <<'CHECK'
 import json, sys
 data=json.load(open(sys.argv[1], encoding="utf-8"))
 total=sum(v.get("packets",0) for v in data.values())
-if total != 52:
-    raise SystemExit(f"FAIL: expected 52 IPv6 UDP packets under the shared quota, observed {total}")
-print(f"PASS: exactly {total}/200 IPv6 packets crossed the shared quota boundary.")
+if not 50 <= total <= 52:
+    raise SystemExit(f"FAIL: expected 50–52 received IPv6 UDP packets (receiver may drop at most two under burst load), observed {total}")
+print(f"PASS: {total}/200 IPv6 UDP packets received; nftables independently confirmed the 64-KiB quota was exhausted.")
 CHECK
 
 echo "[Q-10] Reverse-direction IPv6 traffic must also consume the same quota"
@@ -69,13 +70,14 @@ ip netns exec "$SINK" python3 "$PY" send --destination fd10:10:1::2 --port 44011
 wait "${PIDS[-1]}"
 cat "$TMP/ipv6-reverse.json"
 quota_show
+quota_show | grep -q "used 64 kbytes" || die "reverse IPv6 shared quota did not reach its configured cap"
 python3 - "$TMP/ipv6-reverse.json" <<'CHECK'
 import json, sys
 data=json.load(open(sys.argv[1], encoding="utf-8"))
 total=sum(v.get("packets",0) for v in data.values())
-if total != 52:
-    raise SystemExit(f"FAIL: expected 52 reverse IPv6 UDP packets under the shared quota, observed {total}")
-print(f"PASS: reverse-direction IPv6 traffic was capped at {total} packets.")
+if not 50 <= total <= 52:
+    raise SystemExit(f"FAIL: expected 50–52 received reverse IPv6 packets (receiver may drop at most two under burst load), observed {total}")
+print(f"PASS: reverse IPv6 received {total} packets; nftables independently confirmed the 64-KiB quota was exhausted.")
 CHECK
 
 echo "[Q-11] Forward and reverse IPv6 flows must consume one combined quota"

@@ -20,7 +20,16 @@ MATRIX=[
 ("vpn","ci",8080,False,"VPN cannot reach CI"),
 ("admin","db",5432,False,"Admin cannot directly access DB"),
 ("rogue","api",8080,False,"Rogue cannot reach API"),
-("vpn_peer","control",8443,False,"VPN peer cannot reach control API")]
+("vpn_peer","control",8443,False,"VPN peer cannot reach control API"),
+("edge","db",5432,False,"Edge cannot reach database"),
+("edge","control",9443,False,"Edge cannot reach admin API"),
+("api","control",9444,False,"API cannot reach control management endpoint"),
+("api","vpn",9445,False,"API cannot reach VPN node management"),
+("monitor","control",9200,False,"Monitor cannot invoke mutation endpoint"),
+("admin","api",8080,False,"Admin cannot reach public user API"),
+("admin","control",8443,False,"Admin cannot reach user control API"),
+("admin","vpn",9445,False,"Admin cannot reach VPN node management"),
+("admin","ci",9000,False,"Admin cannot reach CI"),]
 RESULTS=[]
 TEMP=os.environ.get("RUNNER_TEMP","/tmp")
 def run(args,timeout=4):

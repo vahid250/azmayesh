@@ -10,7 +10,8 @@ def openssl(*args):
 def issue(d, name, ca_key, ca_crt, san, eku):
     key=d/f"{name}.key"; csr=d/f"{name}.csr"; crt=d/f"{name}.crt"; ext=d/f"{name}.ext"
     openssl("req","-new","-newkey","rsa:2048","-nodes","-keyout",str(key),"-out",str(csr),"-subj",f"/CN={name}")
-    ext.write_text(f"subjectAltName={san}\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage={eku}\n",encoding="utf-8")
+    san_line=f"subjectAltName={san}\n" if san else ""
+    ext.write_text(san_line+"keyUsage=critical,digitalSignature,keyEncipherment\n"+f"extendedKeyUsage={eku}\n",encoding="utf-8")
     openssl("x509","-req","-in",str(csr),"-CA",str(ca_crt),"-CAkey",str(ca_key),"-CAcreateserial","-out",str(crt),"-days","2","-sha256","-extfile",str(ext))
     return key,crt
 def check(name, expected, actual):
@@ -19,8 +20,7 @@ def check(name, expected, actual):
     return passed
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        sans=self.connection.getpeercert().get("subjectAltName",())
-        uris=[value for typ,value in sans if typ=="URI"]
+        uris=[value for typ,value in self.connection.getpeercert().get("subjectAltName",()) if typ=="URI"]
         ok=AUTHORIZED_URI in uris
         self.send_response(200 if ok else 403); self.end_headers(); self.wfile.write(b"authorized" if ok else b"denied")
     def log_message(self,*args): pass
@@ -40,6 +40,7 @@ def main():
         server_key,server_crt=issue(d,"localhost",ca_key,ca_crt,"DNS:localhost","serverAuth")
         valid_key,valid_crt=issue(d,"control",ca_key,ca_crt,"URI:spiffe://rma/control","clientAuth")
         wrong_key,wrong_crt=issue(d,"wrong-workload",ca_key,ca_crt,"URI:spiffe://rma/user-api","clientAuth")
+        missing_key,missing_crt=issue(d,"missing-san",ca_key,ca_crt,"","clientAuth")
         rogue=d/"rogue"; rogue.mkdir(); rkey=rogue/"ca.key"; rcrt=rogue/"ca.crt"
         openssl("req","-x509","-newkey","rsa:2048","-nodes","-keyout",str(rkey),"-out",str(rcrt),"-days","2","-subj","/CN=Rogue-CA","-addext","basicConstraints=critical,CA:TRUE","-addext","keyUsage=critical,keyCertSign,cRLSign")
         rogue_key,rogue_crt=issue(rogue,"rogue-control",rkey,rcrt,"URI:spiffe://rma/control","clientAuth")
@@ -50,11 +51,12 @@ def main():
             port=srv.server_address[1]
             check("valid trusted client SAN identity",(200,"authorized"),request(port,client_ctx(ca_crt,valid_crt,valid_key)))
             check("trusted but wrong SAN identity",(403,"denied"),request(port,client_ctx(ca_crt,wrong_crt,wrong_key)))
+            check("trusted client certificate missing SAN",(403,"denied"),request(port,client_ctx(ca_crt,missing_crt,missing_key)))
             rejected=False
             try: request(port,client_ctx(ca_crt,rogue_crt,rogue_key))
             except (ssl.SSLError,OSError,http.client.HTTPException): rejected=True
-            check("rogue client CA rejected by server",True,rejected)
+            check("rogue client CA rejected during TLS handshake",True,rejected)
         finally: srv.shutdown(); srv.server_close(); t.join(timeout=2)
-    n=sum(RESULTS); print(f"Layer 01 result: {n}/{len(RESULTS)} passed")
+    print(f"Layer 01 result: {sum(RESULTS)}/{len(RESULTS)} passed")
     if not all(RESULTS): raise SystemExit(1)
 if __name__=="__main__": main()

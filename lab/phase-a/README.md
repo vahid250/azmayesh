@@ -82,6 +82,6 @@ No production Neon project, credentials, or customer traffic is modified.
 
 ## Stage 10D — stateful firewall revocation
 
-- `phase-a-stage10d-stateful-revocation-test.py` opens a real TCP session across the disposable Edge → API route, proves data transfer, removes the exact NEW-flow allow rule, and applies a temporary revocation guard before the established-state accept rule.
+- `phase-a-stage10d-stateful-revocation-test.py` opens a real TCP session across the disposable Edge → API route, proves data transfer, removes the exact NEW-flow allow rule, and adds the exact flow tuple to the pre-installed dynamic nftables revocation set, whose guard precedes established-state acceptance.
 - The test verifies both the already-established session and a fresh connection are blocked, with nftables drop-counter attribution. It writes a JSON evidence artifact.
-- This is an isolated test of revocation-guard semantics. It does not yet integrate a production policy controller, automatic rule reconciliation, or conntrack invalidation into the application. No production firewall is modified.
+- This is an isolated test of dynamic revocation-set semantics. It does not yet integrate a production policy controller, automatic rule reconciliation, or conntrack invalidation into the application. No production firewall is modified.

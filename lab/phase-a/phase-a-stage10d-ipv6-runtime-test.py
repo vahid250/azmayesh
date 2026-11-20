@@ -63,9 +63,8 @@ def drop_counter(zone):
 def probe(src,dst,port,spoof=False):
     source=v6(src, 99 if spoof else 2)
     dest=v6(dst)
-    code=("import socket; s=socket.socket(socket.AF_INET6,socket.SOCK_STREAM); s.settimeout(1.2); "
-        f"s.bind(('{source}',0)); s.connect(('{dest}',{port})); d=s.recv(2); s.close(); "
-        "exit(0 if d==b'OK' else 2)")
+    code=("import socket\\ns=socket.socket(socket.AF_INET6,socket.SOCK_STREAM)\\ns.settimeout(1.2)\\n"
+        f"s.bind(('{source}',0))\\ntry:\\n    s.connect(('{dest}',{port}))\\n    d=s.recv(2)\\n    s.close()\\n    exit(0 if d==b'OK' else 2)\\nexcept OSError:\\n    s.close()\\n    exit(1)")
     r=cmd(["ip","netns","exec",f"rma10d-{src}","python3","-c",code],timeout=3)
     if r.returncode==0: return True
     if r.returncode!=0 and "Traceback" in (r.stderr or ""): return None

@@ -36,6 +36,10 @@ up(){
  ip netns exec "$ROUTER" sysctl -q -w net.ipv6.conf.all.forwarding=1
  ip netns exec "$ROUTER" nft -f - <<'NFT'
 table inet rma10d {
+ # Dynamic exact-flow revocation list; control plane may add/remove tuple elements.
+ set revoked_tcp_flows {
+  type ipv4_addr . ipv4_addr . inet_service
+ }
  chain forward {
   type filter hook forward priority filter; policy drop;
   # Validate source identity and deny IPv6 before established-flow fast path.
@@ -61,6 +65,8 @@ table inet rma10d {
   iifname "z8r" meta nfproto ipv6 counter drop
   iifname "z9r" meta nfproto ipv6 counter drop
   iifname "z10r" meta nfproto ipv6 counter drop
+  # Revocation guard must run before established-state acceptance.
+  ip saddr . ip daddr . tcp dport @revoked_tcp_flows counter drop comment "stage10d-revocation-set"
   ct state established,related accept
   # Edge -> user API only
   ip saddr 10.20.1.2 ip daddr 10.20.2.2 tcp dport 8080 ct state new counter accept

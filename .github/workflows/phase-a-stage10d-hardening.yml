@@ -10,6 +10,8 @@ on:
       - "lab/phase-a/phase-a-stage10d-hardening-test.py"
       - "lab/phase-a/phase-a-stage10d-route-matrix-test.py"
       - "lab/phase-a/phase-a-stage10d-lab.sh"
+      - "lab/phase-a/phase-a-stage10d-ipv6-runtime-test.py"
+      - ".github/workflows/phase-a-stage10d-ipv6-runtime.yml"
       - ".github/workflows/phase-a-stage10d-hardening.yml"
   pull_request:
     paths:

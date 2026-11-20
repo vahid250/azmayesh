@@ -70,7 +70,7 @@ def main():
   payload={"stage":"10D-route-matrix","generated_at":datetime.now(timezone.utc).isoformat(),"checks":RESULTS,"passed":sum(x["outcome"]=="PASS" for x in RESULTS),"failed":sum(x["outcome"]=="FAIL" for x in RESULTS),"inconclusive":sum(x["outcome"]=="INCONCLUSIVE" for x in RESULTS),"scope":"Disposable CI namespaces only; not production/cloud proof."}
   path=os.path.join(TEMP,"phase-a-stage10d-route-matrix-evidence.json")
   with open(path,"w",encoding="utf-8") as f: json.dump(payload,f,indent=2)
-  print(f"Summary: {payload['passed']}/{len(RESULTS)} checks passed; evidence {path}")
+  print(f"Summary: PASS={payload['passed']} FAIL={payload['failed']} INCONCLUSIVE={payload['inconclusive']}; evidence {path}")
   if payload["failed"] or payload["inconclusive"]: raise SystemExit(1)
  finally:
   for p in servers.values():

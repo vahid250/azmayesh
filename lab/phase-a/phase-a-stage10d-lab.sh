@@ -40,6 +40,9 @@ table inet rma10d {
  set revoked_tcp_flows {
   type ipv4_addr . ipv4_addr . inet_service
  }
+ set revoked_peer_sources {
+  type ipv4_addr
+ }
  chain forward {
   type filter hook forward priority filter; policy drop;
   # Validate source identity and deny IPv6 before established-flow fast path.
@@ -65,7 +68,9 @@ table inet rma10d {
   iifname "z8r" meta nfproto ipv6 counter drop
   iifname "z9r" meta nfproto ipv6 counter drop
   iifname "z10r" meta nfproto ipv6 counter drop
-  # Revocation guard must run before established-state acceptance.
+  # Peer-source revocation guard blocks all traffic from a revoked tunnel address.
+  iifname "z1r" ip saddr @revoked_peer_sources counter drop comment "stage10d-peer-source-revocation"
+  # Exact-flow revocation remains available for narrowly scoped policy cases.
   ip saddr . ip daddr . tcp dport @revoked_tcp_flows counter drop comment "stage10d-revocation-set"
   ct state established,related accept
   # Edge -> user API only

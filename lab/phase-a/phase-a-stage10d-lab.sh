@@ -18,10 +18,10 @@ up(){
    ip netns add "$ns"; ip netns exec "$ns" sysctl -q -w net.ipv6.conf.all.disable_ipv6=0; ip netns exec "$ns" sysctl -q -w net.ipv6.conf.default.disable_ipv6=0; ip -n "$ns" link set lo up
    ip link add "z${i}c" type veth peer name "z${i}r"
    ip link set "z${i}c" netns "$ns"; ip link set "z${i}r" netns "$ROUTER"
-   ip -n "$ns" addr add "$net.2/30" dev "z${i}c"; ip -n "$ns" -6 addr add "fd10:10:${i}::2/64" dev "z${i}c"; ip -n "$ns" link set "z${i}c" up
+   ip -n "$ns" addr add "$net.2/30" dev "z${i}c"; ip -n "$ns" -6 addr add "fd10:10:${i}::2/64" dev "z${i}c" nodad; ip -n "$ns" link set "z${i}c" up
    ip -n "$ns" route add default via "$net.1"
    ip -n "$ns" -6 route add default via "fd10:10:${i}::1" dev "z${i}c"
-   ip -n "$ROUTER" addr add "$net.1/30" dev "z${i}r"; ip -n "$ROUTER" -6 addr add "fd10:10:${i}::1/64" dev "z${i}r"; ip -n "$ROUTER" link set "z${i}r" up
+   ip -n "$ROUTER" addr add "$net.1/30" dev "z${i}r"; ip -n "$ROUTER" -6 addr add "fd10:10:${i}::1/64" dev "z${i}r" nodad; ip -n "$ROUTER" link set "z${i}r" up
  done
  # Isolated egress transit: packets reach a disposable external namespace, never host/global network.
  ip netns add "$EGRESS"; ip -n "$EGRESS" link set lo up

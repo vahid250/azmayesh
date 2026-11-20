@@ -86,22 +86,22 @@ def test_source_spoof():
    except Exception:pass
    time.sleep(.1)
   if not ready:
-   record_inconclusive("ANTI-SPOOF edge forged source","DENY with anti-spoof counter","UNKNOWN","API listener readiness failed");return
+   record_inconclusive("edge","api",port,False,"ANTI-SPOOF forged source","API listener readiness failed");return
   try:
    subprocess.run(["ip","-n","rma10d-edge","addr","add",fake+"/32","dev","z1c"],capture_output=True,text=True,timeout=3,check=True)
   except (subprocess.CalledProcessError,subprocess.TimeoutExpired,OSError) as exc:
-   record_inconclusive("ANTI-SPOOF edge forged source","DENY with anti-spoof counter","UNKNOWN",f"temporary source address setup failed: {exc}");return
+   record_inconclusive("edge","api",port,False,"ANTI-SPOOF forged source",f"temporary source address setup failed: {exc}");return
   before=anti_spoof_counter("edge")
   code=f"import socket; s=socket.socket(); s.settimeout(1.5); s.bind(('{fake}',0)); s.connect(('10.20.2.2',{port})); d=s.recv(2); s.close(); exit(0 if d==b'OK' else 2)"
   try: p=run(["ip","netns","exec","rma10d-edge","python3","-c",code],timeout=3); actual=p.returncode==0
   except Exception: actual=None
   after=anti_spoof_counter("edge")
   delta=None if before is None or after is None else after-before
-  if actual is None: record_inconclusive("ANTI-SPOOF edge forged source","DENY with anti-spoof counter","UNKNOWN","probe execution failed")
-  elif actual: record("ANTI-SPOOF edge forged source","DENY with anti-spoof counter","ALLOW",False)
-  elif delta is None: record_inconclusive("ANTI-SPOOF edge forged source","DENY with anti-spoof counter","DENY; counter unavailable","anti-spoof rule counter unavailable")
-  elif delta<=0: record_inconclusive("ANTI-SPOOF edge forged source","DENY with anti-spoof counter",f"DENY; delta={delta}","socket failure lacks matching anti-spoof counter attribution")
-  else: record("ANTI-SPOOF edge forged source","DENY with anti-spoof counter",f"DENY; counter delta={delta}",True)
+  if actual is None: record_inconclusive("edge","api",port,False,"ANTI-SPOOF forged source","probe execution failed")
+  elif actual: record("edge","api",port,False,"ANTI-SPOOF forged source",True,None)
+  elif delta is None: record_inconclusive("edge","api",port,False,"ANTI-SPOOF forged source","anti-spoof rule counter unavailable")
+  elif delta<=0: record_inconclusive("edge","api",port,False,"ANTI-SPOOF forged source",f"socket failure lacks matching anti-spoof counter attribution; delta={delta}")
+  else: record("edge","api",port,False,"ANTI-SPOOF forged source",False,delta)
  finally:
   try: subprocess.run(["ip","-n","rma10d-edge","addr","del",fake+"/32","dev","z1c"],capture_output=True,timeout=2,check=False)
   except Exception: pass

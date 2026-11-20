@@ -26,9 +26,21 @@ class FakeWG:
         self.calls = []
         self.fail_show = False
         self.hide_peer = False
+        self.revoked_ips = set()
+        self.fail_nft_add = False
 
     def __call__(self, args, **kwargs):
         self.calls.append(args)
+        if args[:3] == ["nft", "get", "element"]:
+            return subprocess.CompletedProcess(args, 0 if args[-2] in self.revoked_ips else 1, "", "")
+        if args[:3] == ["nft", "add", "element"]:
+            if self.fail_nft_add:
+                raise subprocess.CalledProcessError(1, args, stderr="simulated nft failure")
+            self.revoked_ips.add(args[-2])
+            return subprocess.CompletedProcess(args, 0, "", "")
+        if args[:3] == ["nft", "delete", "element"]:
+            self.revoked_ips.discard(args[-2])
+            return subprocess.CompletedProcess(args, 0, "", "")
         if args[1:3] == ["show", "wg0"]:
             if self.fail_show:
                 raise subprocess.CalledProcessError(1, args, stderr="simulated wg dump failure")
@@ -97,7 +109,7 @@ def test_quota_exhaustion_is_reconciled_by_registry_then_removes_peer(tmp_path):
             "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "peer_registered"
         }], "remove_peers": []},
         {"interface": "wg0", "peers": [], "remove_peers": [{
-            "client_id": 7, "public_key": PUB, "state": "suspended"
+            "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "suspended"
         }]},
     ]
 
@@ -441,3 +453,63 @@ def test_transient_http_failure_removes_peer_after_grace_and_keeps_event(tmp_pat
         assert any(call[1:] == ["set", "wg0", "peer", PUB, "remove"] for call in wg.calls)
     finally:
         store.close()
+
+ 
+def test_revocation_blocks_peer_source_before_wireguard_removal_and_ack(tmp_path):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG(10, 5)
+    acks = []
+    registry = {"interface":"wg0","peers":[],"remove_peers":[{
+        "client_id":7,"public_key":PUB,"allowed_ips":"10.0.0.2/32","state":"revoked"
+    }]}
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg,
+        post=lambda url, headers, body: acks.append(body) or 200,
+        registry_fetcher=lambda *_: registry,
+    )
+    meter.sync_registry()
+    add_index = next(i for i,c in enumerate(wg.calls) if c[:3] == ["nft","add","element"])
+    remove_index = next(i for i,c in enumerate(wg.calls) if c[1:3] == ["set","wg0"] and "remove" in c)
+    assert add_index < remove_index
+    assert "10.0.0.2" in wg.revoked_ips
+    assert acks and b'"state":"revoked"' in acks[0]
+    store.close()
+
+
+def test_revocation_firewall_failure_does_not_remove_peer_or_ack(tmp_path):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG(10, 5)
+    wg.fail_nft_add = True
+    acks = []
+    registry = {"interface":"wg0","peers":[],"remove_peers":[{
+        "client_id":7,"public_key":PUB,"allowed_ips":"10.0.0.2/32","state":"revoked"
+    }]}
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg,
+        post=lambda *args: acks.append(args) or 200,
+        registry_fetcher=lambda *_: registry,
+    )
+    meter.sync_registry()
+    assert not any(c[1:3] == ["set","wg0"] and "remove" in c for c in wg.calls)
+    assert not acks
+    assert not store.disabled(PUB)
+    store.close()
+
+
+def test_reauthorization_removes_source_guard_only_after_wireguard_update(tmp_path):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG(0, 0)
+    wg.revoked_ips.add("10.0.0.2")
+    peer = Peer(7, PUB, "10.0.0.2/32", "pending_peer_registration")
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg, post=lambda *_: 200,
+    )
+    meter._register_peer(peer)
+    set_index = next(i for i,c in enumerate(wg.calls) if c[1:3] == ["set","wg0"] and "allowed-ips" in c)
+    delete_index = next(i for i,c in enumerate(wg.calls) if c[:3] == ["nft","delete","element"])
+    assert set_index < delete_index
+    assert "10.0.0.2" not in wg.revoked_ips
+    store.close()

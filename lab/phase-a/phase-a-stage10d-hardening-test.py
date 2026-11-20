@@ -113,7 +113,7 @@ def main():
         return None
     for zone in ZONES:
         before=egress_counter(zone)
-        probe="import socket,sys; s=socket.socket(); s.settimeout(1.5)\ntry: s.connect(('1.1.1.1',443)); sys.exit(0)\nexcept OSError: sys.exit(1)\n"
+        probe="import socket; s=socket.create_connection(('1.1.1.1',443),timeout=1.5); s.close()"
         p=subprocess.run(["ip","netns","exec","rma10d-"+zone,"python3","-c",probe],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False)
         denied=p.returncode!=0
         after=egress_counter(zone)

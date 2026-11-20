@@ -328,6 +328,7 @@ async def get_trusted_wireguard_registry(
             remove_peers.append({
                 "client_id": client.id,
                 "public_key": client.public_key,
+                "allowed_ips": client.client_ip,
                 "state": remove_state,
             })
     return {

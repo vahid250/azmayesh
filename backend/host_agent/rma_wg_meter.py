@@ -595,7 +595,7 @@ class WireGuardMeter:
         # never ACK them until the source guard can be restored.
         try:
             self.restore_revoked_sources()
-        except Exception:
+        except Exception as guard_exc:
             for key, peer in removals.items():
                 try:
                     self._remove_peer(key, peer, require_firewall=True)
@@ -604,7 +604,13 @@ class WireGuardMeter:
                         "revoked peer fallback removal failed for client %s (%s)",
                         peer.client_id, type(remove_exc).__name__,
                     )
-            raise
+            # Do not proceed with any active-peer reconciliation in this cycle.
+            # Fallback key removals above are still attempted, but no revocation
+            # ACK is possible until the firewall contract is repaired.
+            self.peers = {}
+            LOG.critical("revocation firewall unavailable; peer activation paused (%s)",
+                         type(guard_exc).__name__)
+            return {}
         previously_managed = self.store.current_peers()
         stale_keys = self.store.replace_registry(active)
         removal_map = dict(removals)

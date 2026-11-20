@@ -11,6 +11,9 @@ def record(test, expected, actual, passed):
     outcome="PASS" if passed else "FAIL"
     RESULTS.append({"test":test,"expected":expected,"actual":actual,"outcome":outcome,"passed":bool(passed)})
     print(f"{outcome}: {test}: expected={expected}; actual={actual}")
+def record_inconclusive(test,expected,actual,reason):
+    RESULTS.append({"test":test,"expected":expected,"actual":actual,"outcome":"INCONCLUSIVE","passed":False,"reason":reason})
+    print(f"INCONCLUSIVE: {test}: expected={expected}; actual={actual}; reason={reason}")
 def openssl(*args):
     subprocess.run(["openssl",*args],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)
 def make_cert(d,name,ca_key,ca_crt):
@@ -97,11 +100,30 @@ def main():
             record("Q10DH-05 rogue client CA rejected with trusted server CA","TLS handshake rejected","rejected" if rejected else "connected",rejected)
         finally:
             httpd.shutdown(); httpd.server_close(); thread.join(timeout=2)
+    def egress_counter(zone):
+        source=f"10.20.{ZONES[zone]}.2"
+        result=subprocess.run(["ip","netns","exec","rma10d-router","nft","list","chain","inet","rma10d","forward"],capture_output=True,text=True,check=False)
+        if result.returncode!=0: return None
+        for line in result.stdout.splitlines():
+            if source in line and "daddr != 10.20.0.0/16" in line and "counter packets" in line:
+                import re
+                match=re.search(r"counter packets (\\d+) bytes (\\d+)",line)
+                if match: return int(match.group(1))
+        return None
     for zone in ZONES:
-        probe="import socket,sys; s=socket.socket(); s.settimeout(1.5)\ntry: s.connect(('1.1.1.1',443)); sys.exit(0)\nexcept OSError: sys.exit(1)\n"
+        before=egress_counter(zone)
+        probe="import socket,sys; s=socket.socket(); s.settimeout(1.5)\\ntry: s.connect(('1.1.1.1',443)); sys.exit(0)\\nexcept OSError: sys.exit(1)\\n"
         p=subprocess.run(["ip","netns","exec","rma10d-"+zone,"python3","-c",probe],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False)
         denied=p.returncode!=0
-        record(f"Q10DH-06 public egress denied from {zone}","DENY","DENY" if denied else "ALLOW",denied)
+        after=egress_counter(zone)
+        if before is None or after is None:
+            record_inconclusive(f"Q10DH-06 public egress denied from {zone}","firewall DENY with counter evidence","UNKNOWN","egress counter could not be read")
+        elif denied and after>before:
+            record(f"Q10DH-06 public egress denied from {zone}","DENY with counter increment",f"DENY; counter {before}->{after}",True)
+        elif not denied:
+            record(f"Q10DH-06 public egress denied from {zone}","DENY with counter increment","ALLOW/connect succeeded",False)
+        else:
+            record_inconclusive(f"Q10DH-06 public egress denied from {zone}","DENY with counter increment","socket failed without matching firewall counter","connect failure is not attributed to firewall policy")
     health_server=HTTPServer(("127.0.0.1",0),HealthHandler)
     health_thread=threading.Thread(target=health_server.serve_forever,daemon=True); health_thread.start()
     try:

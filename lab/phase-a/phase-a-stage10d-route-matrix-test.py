@@ -36,7 +36,7 @@ def run(args,timeout=4):
  return subprocess.run(args,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=timeout,check=False)
 def start_server(dst,port):
  code=("import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); "
-       f"s.bind(('0.0.0.0',{port})); s.listen(8); s.settimeout(.5); end=time.time()+25;\n"
+       f"s.bind(('0.0.0.0',{port})); s.listen(8); s.settimeout(.5); end=time.time()+90;\n"
        "while time.time()<end:\n try: c,a=s.accept(); c.sendall(b'OK'); c.close()\n except socket.timeout: pass\ns.close()")
  return subprocess.Popen(["ip","netns","exec","rma10d-"+dst,"python3","-c",code],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 def probe(src,dst,port):

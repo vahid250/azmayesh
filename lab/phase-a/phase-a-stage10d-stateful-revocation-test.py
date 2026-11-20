@@ -39,7 +39,7 @@ def counter():
 def find_allow_handle():
     for line in chain().splitlines():
         if (f"ip saddr {SRC}" in line and f"ip daddr {DST}" in line
-            and f"tcp dport {PORT}" in line and "ct state new" in line and " accept" in line)):
+            and f"tcp dport {PORT}" in line and "ct state new" in line and " accept" in line):
             m=re.search(r"# handle (\d+)",line)
             if m: return int(m.group(1))
     return None

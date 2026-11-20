@@ -1,4 +1,5 @@
 name: R&MA Backend, Billing, and Metering Tests
+# Keep this workflow path trigger enabled for host-agent security regression tests.
 
 on:
   push:

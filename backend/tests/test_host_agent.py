@@ -543,3 +543,24 @@ def test_revocation_guard_must_be_present_before_any_peer_removal_or_ack(tmp_pat
     assert not any(c[1:3] == ["set","wg0"] and "remove" in c for c in wg.calls)
     assert not acks
     store.close()
+
+
+def test_stale_registry_peer_keeps_previous_ip_for_firewall_revocation(tmp_path):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG(10, 5)
+    responses = [
+        {"interface":"wg0","peers":[{
+            "client_id":7,"public_key":PUB,"allowed_ips":"10.0.0.2/32","state":"peer_registered"
+        }],"remove_peers":[]},
+        {"interface":"wg0","peers":[],"remove_peers":[]},
+    ]
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg, post=lambda *_: 200,
+        registry_fetcher=lambda *_: responses.pop(0),
+    )
+    meter.sync_registry()
+    meter.sync_registry()
+    assert "10.0.0.2" in wg.revoked_ips
+    assert store.disabled(PUB)
+    store.close()

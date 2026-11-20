@@ -535,7 +535,7 @@ class WireGuardMeter:
             if key not in removal_map:
                 old_peer = previously_managed.get(key)
                 if old_peer is not None:
-                    removal_map[key] = Peer(old_peer.client_id, key, "", "suspended")
+                    removal_map[key] = Peer(old_peer.client_id, key, old_peer.allowed_ips, "suspended")
         for key, peer in removal_map.items():
             try:
                 self._flush_pending(peer)

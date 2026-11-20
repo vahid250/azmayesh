@@ -41,7 +41,7 @@ def counter_value(src,dst,port,action):
  import re
  for line in result.stdout.splitlines():
   if source in line and target in line and f"tcp dport {port}" in line and line.rstrip().endswith(action):
-   match=re.search(r"counter packets (\\d+) bytes (\\d+)",line)
+   match=re.search(r"counter packets (\d+) bytes (\d+)",line)
    if match: return int(match.group(1))
  return None
 def record(src,dst,port,expect,description,actual,counter_delta):

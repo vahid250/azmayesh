@@ -102,3 +102,24 @@ Never publish the config, private key, API key, or shared secret.
 - The API currently does not expose live handshake telemetry from the host agent; verify handshake directly on the VPN host during this lab.
 - Do not test failure modes by blocking the only remote management path on a production server.
 - A successful lab test does not enable production issuance. Payment verification, legal/payment route, monitoring, backup/recovery, capacity, abuse handling, and a controlled production rollout remain separate gates.
+
+
+## 9. Required nftables peer-revocation guard
+
+Before starting the agent, provision the dedicated set and early drop rules in the host firewall (example for `wg0`; adapt only after reviewing the complete host ruleset):
+
+    table inet rma_guard {
+        set revoked_peer_sources {
+            type ipv4_addr
+        }
+        chain input {
+            type filter hook input priority -10; policy accept;
+            iifname "wg0" ip saddr @revoked_peer_sources counter drop
+        }
+        chain forward {
+            type filter hook forward priority -10; policy accept;
+            iifname "wg0" ip saddr @revoked_peer_sources counter drop
+        }
+    }
+
+Load this policy through the host's persistent nftables configuration and verify both guards appear before established-flow accept rules. Do not flush or replace an existing host firewall. The agent only mutates elements in the pre-existing set; it never creates tables, chains, sets, or policy rules. If the set is absent or nftables rejects an update, the agent must not acknowledge revocation. Verify the host firewall restore process recreates the empty set at boot; the signed registry repopulates revoked peer addresses on the next successful reconciliation.

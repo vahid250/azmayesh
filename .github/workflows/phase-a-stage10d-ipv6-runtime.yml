@@ -45,6 +45,8 @@ jobs:
           cleanup() { sudo bash lab/phase-a/phase-a-stage10d-lab.sh down || true; }
           trap cleanup EXIT
           sudo bash lab/phase-a/phase-a-stage10d-lab.sh up
+          RULE_LOG="$RUNNER_TEMP/phase-a-stage10d-live-rule-audit.log"
+          sudo -E python3 lab/phase-a/phase-a-stage10d-live-rule-audit.py 2>&1 | tee "$RULE_LOG"
           sudo -E python3 lab/phase-a/phase-a-stage10d-ipv6-runtime-test.py 2>&1 | tee "$LOG"
       - name: Upload IPv6 runtime evidence
         if: always()
@@ -54,5 +56,7 @@ jobs:
           path: |
             ${{ runner.temp }}/phase-a-stage10d-ipv6-runtime.log
             ${{ runner.temp }}/phase-a-stage10d-ipv6-runtime-evidence.json
+            ${{ runner.temp }}/phase-a-stage10d-live-rule-audit.log
+            ${{ runner.temp }}/phase-a-stage10d-rule-audit-evidence.json
           if-no-files-found: warn
           retention-days: 14

@@ -36,6 +36,28 @@ table inet rma10d {
  chain forward {
   type filter hook forward priority filter; policy drop;
   ct state established,related accept
+  # Per-zone IPv4 source anti-spoofing: each ingress interface accepts only its assigned source.
+  iifname "z1r" ip saddr != 10.20.1.2 counter drop
+  iifname "z2r" ip saddr != 10.20.2.2 counter drop
+  iifname "z3r" ip saddr != 10.20.3.2 counter drop
+  iifname "z4r" ip saddr != 10.20.4.2 counter drop
+  iifname "z5r" ip saddr != 10.20.5.2 counter drop
+  iifname "z6r" ip saddr != 10.20.6.2 counter drop
+  iifname "z7r" ip saddr != 10.20.7.2 counter drop
+  iifname "z8r" ip saddr != 10.20.8.2 counter drop
+  iifname "z9r" ip saddr != 10.20.9.2 counter drop
+  iifname "z10r" ip saddr != 10.20.10.2 counter drop
+  # IPv6 forwarding is explicitly denied on every zone ingress.
+  iifname "z1r" meta nfproto ipv6 counter drop
+  iifname "z2r" meta nfproto ipv6 counter drop
+  iifname "z3r" meta nfproto ipv6 counter drop
+  iifname "z4r" meta nfproto ipv6 counter drop
+  iifname "z5r" meta nfproto ipv6 counter drop
+  iifname "z6r" meta nfproto ipv6 counter drop
+  iifname "z7r" meta nfproto ipv6 counter drop
+  iifname "z8r" meta nfproto ipv6 counter drop
+  iifname "z9r" meta nfproto ipv6 counter drop
+  iifname "z10r" meta nfproto ipv6 counter drop
   # Edge -> user API only
   ip saddr 10.20.1.2 ip daddr 10.20.2.2 tcp dport 8080 ct state new counter accept
   # User API -> approved control-plane API only

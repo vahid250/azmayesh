@@ -36,7 +36,9 @@ def probe(src,dst,port):
  return run(["ip","netns","exec","rma10d-"+src,"python3","-c",code]).returncode==0
 def counter_value(src,dst,port,action):
  source=f"10.20.{ZONES[src]}.2"; target=f"10.20.{ZONES[dst]}.2"
- result=subprocess.run(["ip","netns","exec","rma10d-router","nft","list","chain","inet","rma10d","forward"],capture_output=True,text=True,timeout=4,check=False)
+ try:
+  result=subprocess.run(["ip","netns","exec","rma10d-router","nft","list","chain","inet","rma10d","forward"],capture_output=True,text=True,timeout=4,check=False)
+ except (subprocess.TimeoutExpired,OSError): return None
  if result.returncode!=0: return None
  import re
  for line in result.stdout.splitlines():
@@ -45,7 +47,7 @@ def counter_value(src,dst,port,action):
    if match: return int(match.group(1))
  return None
 def record(src,dst,port,expect,description,actual,counter_delta):
- outcome="PASS" if actual==expect and counter_delta>0 else "FAIL"
+ outcome="FAIL" if actual!=expect else ("PASS" if counter_delta is not None and counter_delta>0 else "INCONCLUSIVE")
  passed=outcome=="PASS"
  RESULTS.append({"test":f"{src}->{dst}:{port}","expected":"ALLOW" if expect else "DENY","actual":"ALLOW" if actual else "DENY","outcome":outcome,"passed":passed,"counter_delta":counter_delta,"description":description})
  print(f"{outcome} {src}->{dst}:{port} expected={'ALLOW' if expect else 'DENY'} actual={'ALLOW' if actual else 'DENY'} counter_delta={counter_delta} — {description}")
@@ -79,6 +81,8 @@ def main():
    delta=None if before is None or after is None else after-before
    if actual is None:
     record_inconclusive(src,dst,port,expect,desc,"probe execution error")
+   elif actual!=expect:
+    record(src,dst,port,expect,desc,actual,delta)
    elif delta is None:
     record_inconclusive(src,dst,port,expect,desc,"matching nftables counter unavailable")
    elif delta<=0:

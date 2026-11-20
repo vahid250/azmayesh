@@ -18,15 +18,24 @@ def v6(zone, host=2):
 
 def start_listener(zone, port):
     addr=v6(zone)
-    py=("import socket,time,sys; s=socket.socket(socket.AF_INET6,socket.SOCK_STREAM); "
-        "s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); "
-        f"s.bind((''{addr}'',{port})); s.listen(4); s.settimeout(.5); "
-        "end=time.time()+40; "
-        "while time.time()<end:\\n try: c,a=s.accept(); c.sendall(b'OK'); c.close()\\n except socket.timeout: pass\\n s.close()")
-    # Normalize the generated code's quoting for Python tuple literals.
-    py=py.replace("(''","('").replace("''", "'")
+    server_code=f"""import socket,time
+s=socket.socket(socket.AF_INET6,socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+s.bind(('{addr}',{port}))
+s.listen(4)
+s.settimeout(.5)
+end=time.time()+40
+while time.time()<end:
+    try:
+        c,a=s.accept()
+        c.sendall(b'OK')
+        c.close()
+    except socket.timeout:
+        pass
+s.close()
+"""
     ready=False
-    proc=subprocess.Popen(["ip","netns","exec",f"rma10d-{zone}","python3","-c",py],
+    proc=subprocess.Popen(["ip","netns","exec",f"rma10d-{zone}","python3","-c",server_code],
         stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     for _ in range(40):
         if proc.poll() is not None: break

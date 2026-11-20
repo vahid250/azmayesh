@@ -17,7 +17,13 @@ def make_cert(d,name,ca_key,ca_crt):
     key=d/f"{name}.key"; csr=d/f"{name}.csr"; crt=d/f"{name}.crt"
     openssl("req","-new","-newkey","rsa:2048","-nodes","-keyout",str(key),"-out",str(csr),"-subj",f"/CN={name}")
     ext=d/f"{name}.ext"
-    ext.write_text("subjectAltName=DNS:localhost\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n" if name=="localhost" else "keyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n",encoding="utf-8")
+    identities={"rma-control":"URI:spiffe://rma/control","rma-user-api":"URI:spiffe://rma/user-api"}
+    if name=="localhost":
+        ext_text="subjectAltName=DNS:localhost\\nkeyUsage=critical,digitalSignature,keyEncipherment\\nextendedKeyUsage=serverAuth\\n"
+    else:
+        san=identities.get(name,"")
+        ext_text=(f"subjectAltName={san}\\n" if san else "")+"keyUsage=critical,digitalSignature\\nextendedKeyUsage=clientAuth\\n"
+    ext.write_text(ext_text,encoding="utf-8")
     openssl("x509","-req","-in",str(csr),"-CA",str(ca_crt),"-CAkey",str(ca_key),"-CAcreateserial","-out",str(crt),"-days","2","-sha256","-extfile",str(ext))
     return key,crt
 class HealthHandler(BaseHTTPRequestHandler):
@@ -55,6 +61,7 @@ def main():
         openssl("req","-x509","-newkey","rsa:2048","-nodes","-keyout",str(ca_key),"-out",str(ca_crt),"-days","2","-subj","/CN=RMA-Test-CA","-addext","basicConstraints=critical,CA:TRUE","-addext","keyUsage=critical,keyCertSign,cRLSign")
         control_key,control_crt=make_cert(d,"rma-control",ca_key,ca_crt)
         user_key,user_crt=make_cert(d,"rma-user-api",ca_key,ca_crt)
+        missing_key,missing_crt=make_cert(d,"rma-control-no-san",ca_key,ca_crt)
         server_key,server_crt=make_cert(d,"localhost",ca_key,ca_crt)
         rogue_ca_key=d/"rogue-ca.key"; rogue_ca_crt=d/"rogue-ca.crt"
         openssl("req","-x509","-newkey","rsa:2048","-nodes","-keyout",str(rogue_ca_key),"-out",str(rogue_ca_crt),"-days","2","-subj","/CN=Untrusted-Test-CA")
@@ -63,7 +70,6 @@ def main():
         server_ctx=ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         server_ctx.load_cert_chain(str(server_crt),str(server_key))
         server_ctx.load_verify_locations(cafile=str(ca_crt)); server_ctx.verify_mode=ssl.CERT_REQUIRED
-        server_ctx.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
         verify=subprocess.run(["openssl","verify","-purpose","sslclient","-CAfile",str(ca_crt),str(control_crt)],check=False,capture_output=True,text=True)
         if verify.returncode != 0:
             print("Certificate verification diagnostic (stdout):",verify.stdout)
@@ -80,6 +86,8 @@ def main():
             record("Q10DH-01 trusted workload mTLS and authorized control identity","HTTP 200",f"HTTP {status}",status==200)
             user=context(ca_crt,user_crt,user_key); status=request(port,user)
             record("Q10DH-02 trusted but wrong workload identity","HTTP 403",f"HTTP {status}",status==403)
+            missing=context(ca_crt,missing_crt,missing_key); status=request(port,missing)
+            record("Q10DH-03 trusted client certificate missing SAN URI","HTTP 403",f"HTTP {status}",status==403)
             POLICY["available"]=False; status=request(port,valid)
             record("Q10DH-04 policy dependency unavailable","HTTP 503 fail closed",f"HTTP {status}",status==503)
             POLICY["available"]=True

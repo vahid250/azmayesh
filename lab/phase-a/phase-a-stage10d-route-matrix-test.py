@@ -34,11 +34,21 @@ def probe(src,dst,port):
  ip=f"10.20.{ZONES[dst]}.2"
  code=f"import socket; s=socket.socket(); s.settimeout(1); s.connect(('{ip}',{port})); d=s.recv(2); s.close(); exit(0 if d==b'OK' else 2)"
  return run(["ip","netns","exec","rma10d-"+src,"python3","-c",code]).returncode==0
-def record(src,dst,port,expect,description,actual):
- outcome="PASS" if actual==expect else "FAIL"
+def counter_value(src,dst,port,action):
+ source=f"10.20.{ZONES[src]}.2"; target=f"10.20.{ZONES[dst]}.2"
+ result=subprocess.run(["ip","netns","exec","rma10d-router","nft","list","chain","inet","rma10d","forward"],capture_output=True,text=True,timeout=4,check=False)
+ if result.returncode!=0: return None
+ import re
+ for line in result.stdout.splitlines():
+  if source in line and target in line and f"tcp dport {port}" in line and line.rstrip().endswith(action):
+   match=re.search(r"counter packets (\\d+) bytes (\\d+)",line)
+   if match: return int(match.group(1))
+ return None
+def record(src,dst,port,expect,description,actual,counter_delta):
+ outcome="PASS" if actual==expect and counter_delta>0 else "FAIL"
  passed=outcome=="PASS"
- RESULTS.append({"test":f"{src}->{dst}:{port}","expected":"ALLOW" if expect else "DENY","actual":"ALLOW" if actual else "DENY","outcome":outcome,"passed":passed,"description":description})
- print(f"{outcome} {src}->{dst}:{port} expected={'ALLOW' if expect else 'DENY'} actual={'ALLOW' if actual else 'DENY'} — {description}")
+ RESULTS.append({"test":f"{src}->{dst}:{port}","expected":"ALLOW" if expect else "DENY","actual":"ALLOW" if actual else "DENY","outcome":outcome,"passed":passed,"counter_delta":counter_delta,"description":description})
+ print(f"{outcome} {src}->{dst}:{port} expected={'ALLOW' if expect else 'DENY'} actual={'ALLOW' if actual else 'DENY'} counter_delta={counter_delta} — {description}")
 def record_inconclusive(src,dst,port,expect,description,reason):
  RESULTS.append({"test":f"{src}->{dst}:{port}","expected":"ALLOW" if expect else "DENY","actual":"UNKNOWN","outcome":"INCONCLUSIVE","passed":False,"description":description,"reason":reason})
  print(f"INCONCLUSIVE {src}->{dst}:{port} expected={'ALLOW' if expect else 'DENY'} actual=UNKNOWN — {description} ({reason})")
@@ -62,11 +72,18 @@ def main():
      record_inconclusive(src,dst,port,expect,desc,"destination listener/readiness probe failed; policy path not evaluated"); continue
    if readiness.get(key) is False:
     record_inconclusive(src,dst,port,expect,desc,"destination readiness previously failed for this dst/port"); continue
+   before=counter_value(src,dst,port,"accept" if expect else "drop")
    try: actual=probe(src,dst,port)
-   except Exception as exc: actual=None
+   except Exception: actual=None
+   after=counter_value(src,dst,port,"accept" if expect else "drop")
+   delta=None if before is None or after is None else after-before
    if actual is None:
     record_inconclusive(src,dst,port,expect,desc,"probe execution error")
-   else: record(src,dst,port,expect,desc,actual)
+   elif delta is None:
+    record_inconclusive(src,dst,port,expect,desc,"matching nftables counter unavailable")
+   elif delta<=0:
+    record_inconclusive(src,dst,port,expect,desc,"socket result lacks matching nftables counter increment")
+   else: record(src,dst,port,expect,desc,actual,delta)
   payload={"stage":"10D-route-matrix","generated_at":datetime.now(timezone.utc).isoformat(),"checks":RESULTS,"passed":sum(x["outcome"]=="PASS" for x in RESULTS),"failed":sum(x["outcome"]=="FAIL" for x in RESULTS),"inconclusive":sum(x["outcome"]=="INCONCLUSIVE" for x in RESULTS),"scope":"Disposable CI namespaces only; not production/cloud proof."}
   path=os.path.join(TEMP,"phase-a-stage10d-route-matrix-evidence.json")
   with open(path,"w",encoding="utf-8") as f: json.dump(payload,f,indent=2)

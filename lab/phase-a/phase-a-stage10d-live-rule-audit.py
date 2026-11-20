@@ -45,18 +45,18 @@ def run():
  actual_allow=set()
  for l in accepts:
   if "ct state established,related accept" in l: continue
-  m=re.search(r"ip saddr (\\S+) ip daddr (\\S+) tcp dport (\\d+)",l)
+  m=re.search(r"ip saddr (\S+) ip daddr (\S+) tcp dport (\d+)",l)
   if m: actual_allow.add((m.group(1),m.group(2),int(m.group(3))))
  check("explicit TCP allow-list matches approved tuples exactly",actual_allow==EXPECTED_ALLOW,
        f"observed {len(actual_allow)} tuples; missing={sorted(EXPECTED_ALLOW-actual_allow)}; unexpected={sorted(actual_allow-EXPECTED_ALLOW)}")
  drops=set()
  for l in lines:
-  m=re.search(r"ip saddr (\\S+) ip daddr (\\S+) tcp dport (\\d+) counter .* drop$",l)
+  m=re.search(r"ip saddr (\S+) ip daddr (\S+) tcp dport (\d+) counter .* drop$",l)
   if m:drops.add((m.group(1),m.group(2),int(m.group(3))))
  overlap=drops & actual_allow
  check("explicit deny rules do not overlap approved allow tuples",not overlap,f"overlap={sorted(overlap)}")
  # A broad accept is forbidden; only exact state and whitelisted tuple accepts are acceptable.
- unexpected=[l for l in accepts if "ct state established,related accept" not in l and not re.search(r"ip saddr \\S+ ip daddr \\S+ tcp dport \\d+ .* accept$",l)]
+ unexpected=[l for l in accepts if "ct state established,related accept" not in l and not re.search(r"ip saddr \S+ ip daddr \S+ tcp dport \d+ .* accept$",l)]
  check("no wildcard or non-TCP accept rule",not unexpected,f"unexpected={unexpected}")
  payload={"stage":"10D-live-rule-audit","generated_at":datetime.now(timezone.utc).isoformat(),"checks":checks,
           "passed":sum(c["passed"] for c in checks),"failed":sum(not c["passed"] for c in checks),

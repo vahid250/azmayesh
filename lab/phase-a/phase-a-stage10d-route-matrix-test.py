@@ -63,10 +63,56 @@ def record(src,dst,port,expect,description,actual,counter_delta):
 def record_inconclusive(src,dst,port,expect,description,reason):
  RESULTS.append({"test":f"{src}->{dst}:{port}","expected":"ALLOW" if expect else "DENY","actual":"UNKNOWN","outcome":"INCONCLUSIVE","passed":False,"description":description,"reason":reason})
  print(f"INCONCLUSIVE {src}->{dst}:{port} expected={'ALLOW' if expect else 'DENY'} actual=UNKNOWN — {description} ({reason})")
+def anti_spoof_counter(zone):
+ iface=f"z{ZONES[zone]}r"; assigned=f"10.20.{ZONES[zone]}.2"
+ try:
+  result=subprocess.run(["ip","netns","exec","rma10d-router","nft","list","chain","inet","rma10d","forward"],capture_output=True,text=True,timeout=4,check=False)
+ except (subprocess.TimeoutExpired,OSError): return None
+ if result.returncode!=0:return None
+ import re
+ for line in result.stdout.splitlines():
+  if f'iifname "{iface}"' in line and f"ip saddr != {assigned}" in line and "counter packets" in line:
+   match=re.search(r"counter packets (\\d+) bytes (\\d+)",line)
+   if match:return int(match.group(1))
+ return None
+def test_source_spoof():
+ fake="10.20.99.2"; port=8080; server=start_server("api",port)
+ try:
+  ready=False
+  for _ in range(20):
+   if server.poll() is not None:break
+   try:
+    if probe("api","api",port):ready=True;break
+   except Exception:pass
+   time.sleep(.1)
+  if not ready:
+   record_inconclusive("ANTI-SPOOF edge forged source","DENY with anti-spoof counter","UNKNOWN","API listener readiness failed");return
+  try:
+   subprocess.run(["ip","-n","rma10d-edge","addr","add",fake+"/32","dev","z1c"],capture_output=True,text=True,timeout=3,check=True)
+  except (subprocess.CalledProcessError,subprocess.TimeoutExpired,OSError) as exc:
+   record_inconclusive("ANTI-SPOOF edge forged source","DENY with anti-spoof counter","UNKNOWN",f"temporary source address setup failed: {exc}");return
+  before=anti_spoof_counter("edge")
+  code=f"import socket; s=socket.socket(); s.settimeout(1.5); s.bind(('{fake}',0)); s.connect(('10.20.2.2',{port})); d=s.recv(2); s.close(); exit(0 if d==b'OK' else 2)"
+  try: p=run(["ip","netns","exec","rma10d-edge","python3","-c",code],timeout=3); actual=p.returncode==0
+  except Exception: actual=None
+  after=anti_spoof_counter("edge")
+  delta=None if before is None or after is None else after-before
+  if actual is None: record_inconclusive("ANTI-SPOOF edge forged source","DENY with anti-spoof counter","UNKNOWN","probe execution failed")
+  elif actual: record("ANTI-SPOOF edge forged source","DENY with anti-spoof counter","ALLOW",False)
+  elif delta is None: record_inconclusive("ANTI-SPOOF edge forged source","DENY with anti-spoof counter","DENY; counter unavailable","anti-spoof rule counter unavailable")
+  elif delta<=0: record_inconclusive("ANTI-SPOOF edge forged source","DENY with anti-spoof counter",f"DENY; delta={delta}","socket failure lacks matching anti-spoof counter attribution")
+  else: record("ANTI-SPOOF edge forged source","DENY with anti-spoof counter",f"DENY; counter delta={delta}",True)
+ finally:
+  try: subprocess.run(["ip","-n","rma10d-edge","addr","del",fake+"/32","dev","z1c"],capture_output=True,timeout=2,check=False)
+  except Exception: pass
+  if server.poll() is None:server.terminate()
+  try:server.wait(timeout=2)
+  except subprocess.TimeoutExpired:server.kill()
 def main():
  servers={}
  readiness={}
  try:
+  test_source_spoof()
   for src,dst,port,expect,desc in MATRIX:
    key=(dst,port)
    if key not in servers:

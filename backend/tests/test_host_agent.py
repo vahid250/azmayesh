@@ -214,7 +214,7 @@ def test_signed_registry_adds_authorized_peer_and_removes_stale_peer(tmp_path):
             "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "peer_registered"
         }], "remove_peers": []},
         {"interface": "wg0", "peers": [], "remove_peers": [{
-            "client_id": 7, "public_key": PUB, "state": "suspended"
+            "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "suspended"
         }]},
     ]
     registry_requests = []

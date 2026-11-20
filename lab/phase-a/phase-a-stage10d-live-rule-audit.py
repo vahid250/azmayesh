@@ -28,7 +28,7 @@ def run():
  check("single established-state accept",len(established)==1, f"found {len(established)} rule(s)")
  eidx=established[0] if established else -1
  set_result=subprocess.run(["ip","netns","exec","rma10d-router","nft","list","set","inet","rma10d","revoked_tcp_flows"],capture_output=True,text=True,timeout=5,check=False)
- set_ok=set_result.returncode==0 and re.search(r"type ipv4_addr \\. ipv4_addr \\. inet_service",set_result.stdout) is not None
+ set_ok=set_result.returncode==0 and re.search(r"type ipv4_addr \. ipv4_addr \. inet_service",set_result.stdout) is not None
  check("dynamic TCP revocation set exists with exact 3-tuple key",set_ok,
        set_result.stdout.strip() if set_result.returncode==0 else set_result.stderr.strip())
  revoke_indices=[i for i,l in enumerate(lines) if 'comment "stage10d-revocation-set"' in l]

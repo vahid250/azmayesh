@@ -17,7 +17,7 @@ def make_cert(d,name,ca_key,ca_crt):
     key=d/f"{name}.key"; csr=d/f"{name}.csr"; crt=d/f"{name}.crt"
     openssl("req","-new","-newkey","rsa:2048","-nodes","-keyout",str(key),"-out",str(csr),"-subj",f"/CN={name}")
     ext=d/f"{name}.ext"
-    ext.write_text("subjectAltName=DNS:localhost\nextendedKeyUsage=serverAuth\n" if name=="localhost" else "extendedKeyUsage=clientAuth\n",encoding="utf-8")
+    ext.write_text("subjectAltName=DNS:localhost\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n" if name=="localhost" else "keyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n",encoding="utf-8")
     openssl("x509","-req","-in",str(csr),"-CA",str(ca_crt),"-CAkey",str(ca_key),"-CAcreateserial","-out",str(crt),"-days","2","-sha256","-extfile",str(ext))
     return key,crt
 class HealthHandler(BaseHTTPRequestHandler):
@@ -66,7 +66,12 @@ def main():
         server_ctx.load_cert_chain(str(server_crt),str(server_key))
         server_ctx.load_verify_locations(cafile=str(ca_crt)); server_ctx.verify_mode=ssl.CERT_REQUIRED
         server_ctx.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
-        verify=subprocess.run(["openssl","verify","-purpose","sslclient","-CAfile",str(ca_crt),str(control_crt)],check=False,capture_output=True,text=True)\n        if verify.returncode != 0:\n            print("Certificate verification diagnostic (stdout):",verify.stdout)\n            print("Certificate verification diagnostic (stderr):",verify.stderr)\n            raise RuntimeError("OpenSSL client certificate verification failed")\n        print("PASS: OpenSSL client certificate purpose and CA validation")
+        verify=subprocess.run(["openssl","verify","-purpose","sslclient","-CAfile",str(ca_crt),str(control_crt)],check=False,capture_output=True,text=True)
+        if verify.returncode != 0:
+            print("Certificate verification diagnostic (stdout):",verify.stdout)
+            print("Certificate verification diagnostic (stderr):",verify.stderr)
+            raise RuntimeError("OpenSSL client certificate verification failed")
+        print("PASS: OpenSSL client certificate purpose and CA validation")
         httpd=HTTPServer(("127.0.0.1",0),Handler)
         httpd.socket=server_ctx.wrap_socket(httpd.socket,server_side=True)
         port=httpd.server_address[1]

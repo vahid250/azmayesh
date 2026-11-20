@@ -95,11 +95,21 @@ def main():
         # Attempt source-address spoofing over IPv6 too; ingress policy is protocol-family-wide.
         for src,dst in (("edge","api"),("vpn_peer","control")):
             port=19400+ZONES[dst]
-            before=drop_counter(src)
-            actual=probe(src,dst,port,spoof=True)
-            after=drop_counter(src)
-            delta=None if before is None or after is None else after-before
-            record(src,dst,port,"DENY",actual,delta,"IPv6 alternate source address must not bypass ingress IPv6 drop")
+            alias=v6(src,99)
+            iface=f"z{ZONES[src]}c"
+            setup=cmd(["ip","-n",f"rma10d-{src}","-6","addr","add",alias+"/64","dev",iface])
+            if setup.returncode:
+                RESULTS.append({"test":f"IPv6 spoof {src}->{dst}","expected":"deny","actual":"UNKNOWN","outcome":"INCONCLUSIVE","passed":False,"reason":setup.stderr})
+                print(f"INCONCLUSIVE: IPv6 spoof alias setup failed for {src}: {setup.stderr.strip()}")
+                continue
+            try:
+                before=drop_counter(src)
+                actual=probe(src,dst,port,spoof=True)
+                after=drop_counter(src)
+                delta=None if before is None or after is None else after-before
+                record(src,dst,port,"DENY",actual,delta,"IPv6 alternate source address must not bypass ingress IPv6 drop")
+            finally:
+                cmd(["ip","-n",f"rma10d-{src}","-6","addr","del",alias+"/64","dev",iface])
         payload={"stage":"10D-IPv6-runtime","generated_at":datetime.now(timezone.utc).isoformat(),"checks":RESULTS,
             "passed":sum(x["outcome"]=="PASS" for x in RESULTS),"failed":sum(x["outcome"]=="FAIL" for x in RESULTS),
             "inconclusive":sum(x["outcome"]=="INCONCLUSIVE" for x in RESULTS),

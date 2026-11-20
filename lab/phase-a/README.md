@@ -79,3 +79,9 @@ No production Neon project, credentials, or customer traffic is modified.
 - Forced row-level security scopes subscription, quota-period, quota-event, and audit rows to the wrapper's transaction-local account context. The custom setting is not an authentication credential; direct table access remains revoked.
 - `phase-a-stage10c-test.py` verifies owner-role attributes, role membership boundaries, direct table/function denial, tenant RLS, and privilege-escalation rejection (Q36–Q42).
 - CI uses a disposable PostgreSQL 16 service. No production database is modified. JWT verification remains the responsibility of the trusted API gateway.
+
+## Stage 10D — stateful firewall revocation
+
+- `phase-a-stage10d-stateful-revocation-test.py` opens a real TCP session across the disposable Edge → API route, proves data transfer, removes the exact NEW-flow allow rule, and applies a temporary revocation guard before the established-state accept rule.
+- The test verifies both the already-established session and a fresh connection are blocked, with nftables drop-counter attribution. It writes a JSON evidence artifact.
+- This is an isolated test of revocation-guard semantics. It does not yet integrate a production policy controller, automatic rule reconciliation, or conntrack invalidation into the application. No production firewall is modified.

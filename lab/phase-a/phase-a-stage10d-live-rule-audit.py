@@ -22,7 +22,7 @@ def check(name,passed,details):
 def run():
  r=subprocess.run(["ip","netns","exec","rma10d-router","nft","list","chain","inet","rma10d","forward"],capture_output=True,text=True,timeout=5)
  if r.returncode: raise SystemExit(f"nft chain retrieval failed: {r.stderr}")
- lines=[ln.strip() for ln in r.stdout.splitlines() if "counter packets" in ln]
+ lines=[ln.strip() for ln in r.stdout.splitlines() if ln.strip() and not ln.strip().startswith("chain ")]
  # Identify ordered guard/accept/drop rules from live chain output.
  established=[i for i,l in enumerate(lines) if "ct state established,related accept" in l]
  check("single established-state accept",len(established)==1, f"found {len(established)} rule(s)")

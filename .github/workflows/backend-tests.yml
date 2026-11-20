@@ -2,7 +2,7 @@ name: R&MA Backend, Billing, and Metering Tests
 
 on:
   push:
-    branches: ["work/rma-backend-dashboard", "rebuild/**"]
+    branches: ["work/rma-backend-dashboard", "rebuild/**", "security/**"]
     paths:
       - "backend/**"
       - "frontend/**"

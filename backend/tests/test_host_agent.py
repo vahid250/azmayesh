@@ -517,6 +517,41 @@ def test_revocation_firewall_failure_falls_back_to_wireguard_removal_without_ack
     store.close()
 
 
+def test_concurrent_registry_reconciliation_is_serialized(tmp_path):
+    import threading
+    import time
+
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG()
+    active_calls = 0
+    peak_calls = 0
+    state_lock = threading.Lock()
+
+    def fetch_registry(*_):
+        nonlocal active_calls, peak_calls
+        with state_lock:
+            active_calls += 1
+            peak_calls = max(peak_calls, active_calls)
+        time.sleep(0.03)
+        with state_lock:
+            active_calls -= 1
+        return {"interface":"wg0","peers":[],"remove_peers":[]}
+
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg, post=lambda *_: 200,
+        registry_fetcher=fetch_registry,
+    )
+    threads = [threading.Thread(target=meter.sync_registry) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+    assert all(not thread.is_alive() for thread in threads)
+    assert peak_calls == 1, "registry sync must not run concurrently within one agent process"
+    store.close()
+
+
 def test_revocation_ledger_rehydrates_nft_set_after_agent_and_firewall_restart(tmp_path):
     db_path = str(tmp_path / "state.sqlite3")
     wg = FakeWG(10, 5)

@@ -128,11 +128,12 @@ s.close()
                f"{revoke_index} < {established_index}",ordered)
 
         before=counter()
-        client.stdin.write("after-revoke\n"); client.stdin.flush()
         old_result=client.stdout.readline().strip()
-        if old_result == "" and client.poll() is not None:
-            err=client.stderr.read().strip()
-            old_result=f"CLIENT_EXIT_{client.returncode}; stderr={err}"
+        if old_result == "":
+            try: client.wait(timeout=2)
+            except subprocess.TimeoutExpired: pass
+            err=client.stderr.read().strip() if client.poll() is not None else "client still running without output"
+            old_result=f"CLIENT_EXIT_{client.returncode}; stderr={err}" if client.poll() is not None else err
         after=counter()
         old_delta=None if before is None or after is None else after-before
         record("Q10DS-05 pre-existing TCP session is blocked after revocation",

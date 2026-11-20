@@ -303,6 +303,7 @@ def test_signed_peer_registry_only_returns_current_entitlements(monkeypatch):
         assert excluded.json()["remove_peers"] == [{
             "client_id": peer_id,
             "public_key": "registry-test-public-key",
+            "allowed_ips": "10.99.0.8/32",
             "state": "suspended",
         }]
     finally:

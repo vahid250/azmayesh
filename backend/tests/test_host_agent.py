@@ -517,6 +517,66 @@ def test_revocation_firewall_failure_falls_back_to_wireguard_removal_without_ack
     store.close()
 
 
+def test_revocation_ledger_rehydrates_nft_set_after_agent_and_firewall_restart(tmp_path):
+    db_path = str(tmp_path / "state.sqlite3")
+    wg = FakeWG(10, 5)
+    revoked = {"interface":"wg0","peers":[],"remove_peers":[{
+        "client_id":7,"public_key":PUB,"allowed_ips":"10.0.0.2/32","state":"revoked"
+    }]}
+    store = MeteringStore(db_path)
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg, post=lambda *_: 200,
+        registry_fetcher=lambda *_: revoked,
+    )
+    meter.sync_registry()
+    assert store.revoked_sources() == ["10.0.0.2"]
+    assert "10.0.0.2" in wg.revoked_ips
+    store.close()
+
+    # Simulate both processes restarting: SQLite survives, nftables' dynamic
+    # set is empty after its persistent ruleset is reloaded.
+    wg.revoked_ips.clear()
+    wg.calls.clear()
+    restarted_store = MeteringStore(db_path)
+    restarted = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=restarted_store, command=wg, post=lambda *_: 200,
+        registry_fetcher=lambda *_: {"interface":"wg0","peers":[],"remove_peers":[]},
+    )
+    restarted.sync_registry()
+    assert "10.0.0.2" in wg.revoked_ips
+    assert restarted_store.revoked_sources() == ["10.0.0.2"]
+    add_index = next(i for i, call in enumerate(wg.calls) if call[:3] == ["nft", "add", "element"])
+    guard_indices = [i for i, call in enumerate(wg.calls) if call[:4] == ["nft", "-a", "list", "chain"]]
+    assert len(guard_indices) == 2 and max(guard_indices) < add_index
+    restarted_store.close()
+
+
+def test_reauthorization_after_restart_restores_peer_before_clearing_durable_guard(tmp_path):
+    db_path = str(tmp_path / "state.sqlite3")
+    wg = FakeWG(0, 0)
+    store = MeteringStore(db_path)
+    store.remember_revoked_source("10.0.0.2/32")
+    wg.revoked_ips.clear()
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg, post=lambda *_: 200,
+        registry_fetcher=lambda *_: {"interface":"wg0","peers":[{
+            "client_id":7,"public_key":PUB,"allowed_ips":"10.0.0.2/32","state":"peer_registered"
+        }],"remove_peers":[]},
+    )
+    meter.sync_registry()
+    set_index = next(i for i, call in enumerate(wg.calls)
+                     if call[1:3] == ["set", "wg0"] and "allowed-ips" in call)
+    delete_index = next(i for i, call in enumerate(wg.calls)
+                        if call[:3] == ["nft", "delete", "element"])
+    assert set_index < delete_index
+    assert "10.0.0.2" not in wg.revoked_ips
+    assert store.revoked_sources() == []
+    store.close()
+
+
 def test_reauthorization_removes_source_guard_only_after_wireguard_update(tmp_path):
     store = MeteringStore(str(tmp_path / "state.sqlite3"))
     wg = FakeWG(0, 0)

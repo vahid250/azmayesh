@@ -363,6 +363,26 @@ class WireGuardMeter:
     def sample(self):
         return parse_wg_dump(self._wg("show", self.interface, "dump").stdout)
 
+    def _verify_revocation_guards(self):
+        # Both local traffic and forwarded traffic must be filtered before
+        # ordinary filter-priority established-flow accepts.
+        for hook in ("input", "forward"):
+            result = self.command(
+                ["nft", "-a", "list", "chain", "inet", "rma_guard", hook],
+                check=False, capture_output=True, text=True, timeout=8,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"required nftables {hook} revocation chain is unavailable")
+            output = result.stdout
+            priority = re.search(rf"hook {hook} priority (-?\\d+)", output)
+            guard = any(
+                f'iifname "{self.interface}" ip saddr @revoked_peer_sources' in line
+                and re.search(r"\\bdrop\\b", line)
+                for line in output.splitlines()
+            )
+            if priority is None or int(priority.group(1)) > -10 or not guard:
+                raise RuntimeError(f"nftables {hook} revocation guard is missing or not early enough")
+
     def _nft_element_present(self, address):
         address = str(ipaddress.ip_address(address))
         if ipaddress.ip_address(address).version != 4:
@@ -374,6 +394,7 @@ class WireGuardMeter:
         return result.returncode == 0
 
     def _revoke_peer_source(self, allowed_ips):
+        self._verify_revocation_guards()
         interface = _validate_peer_allowed_ips(allowed_ips)
         address = str(ipaddress.ip_interface(interface).ip)
         if self._nft_element_present(address):
@@ -389,6 +410,7 @@ class WireGuardMeter:
                 raise
 
     def _unrevoke_peer_source(self, allowed_ips):
+        self._verify_revocation_guards()
         interface = _validate_peer_allowed_ips(allowed_ips)
         address = str(ipaddress.ip_interface(interface).ip)
         if not self._nft_element_present(address):

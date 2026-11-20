@@ -38,6 +38,17 @@ table inet rma10d {
   # Admin -> dedicated admin API and approved control-plane management
   ip saddr 10.20.4.2 ip daddr 10.20.3.2 tcp dport 9443 ct state new counter accept
   ip saddr 10.20.4.2 ip daddr 10.20.3.2 tcp dport 9444 ct state new counter accept
+  # Explicit egress-deny counters: outside the lab subnet is blocked per source zone.
+  ip saddr 10.20.1.2 ip daddr != 10.20.0.0/16 counter drop
+  ip saddr 10.20.2.2 ip daddr != 10.20.0.0/16 counter drop
+  ip saddr 10.20.3.2 ip daddr != 10.20.0.0/16 counter drop
+  ip saddr 10.20.4.2 ip daddr != 10.20.0.0/16 counter drop
+  ip saddr 10.20.5.2 ip daddr != 10.20.0.0/16 counter drop
+  ip saddr 10.20.6.2 ip daddr != 10.20.0.0/16 counter drop
+  ip saddr 10.20.7.2 ip daddr != 10.20.0.0/16 counter drop
+  ip saddr 10.20.8.2 ip daddr != 10.20.0.0/16 counter drop
+  ip saddr 10.20.9.2 ip daddr != 10.20.0.0/16 counter drop
+  ip saddr 10.20.10.2 ip daddr != 10.20.0.0/16 counter drop
   # Monitoring -> read-only health endpoints only
   ip saddr 10.20.5.2 ip daddr 10.20.2.2 tcp dport 9100 ct state new counter accept
   ip saddr 10.20.5.2 ip daddr 10.20.3.2 tcp dport 9100 ct state new counter accept

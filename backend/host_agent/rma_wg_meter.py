@@ -375,7 +375,7 @@ class WireGuardMeter:
 
     def _revoke_peer_source(self, allowed_ips):
         interface = _validate_peer_allowed_ips(allowed_ips)
-        address = str(interface.ip)
+        address = str(ipaddress.ip_interface(interface).ip)
         if self._nft_element_present(address):
             return
         try:

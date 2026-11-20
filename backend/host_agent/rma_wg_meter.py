@@ -374,13 +374,18 @@ class WireGuardMeter:
             if result.returncode != 0:
                 raise RuntimeError(f"required nftables {hook} revocation chain is unavailable")
             output = result.stdout
-            priority = re.search(rf"hook {hook} priority (-?\\d+)", output)
-            guard = any(
-                f'iifname "{self.interface}" ip saddr @revoked_peer_sources' in line
-                and re.search(r"\\bdrop\\b", line)
-                for line in output.splitlines()
+            priority_marker = f"hook {hook} priority "
+            priority = None
+            if priority_marker in output:
+                try:
+                    priority = int(output.split(priority_marker, 1)[1].split(";", 1)[0].split()[0])
+                except (ValueError, IndexError):
+                    priority = None
+            guard = (
+                f'iifname "{self.interface}" ip saddr @revoked_peer_sources' in output
+                and " drop" in output
             )
-            if priority is None or int(priority.group(1)) > -10 or not guard:
+            if priority is None or priority > -10 or not guard:
                 raise RuntimeError(f"nftables {hook} revocation guard is missing or not early enough")
 
     def _nft_element_present(self, address):

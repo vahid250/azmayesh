@@ -35,7 +35,7 @@ up(){
 table inet rma10d {
  chain forward {
   type filter hook forward priority filter; policy drop;
-  ct state established,related accept
+  # Validate source identity and deny IPv6 before established-flow fast path.
   # Per-zone IPv4 source anti-spoofing: each ingress interface accepts only its assigned source.
   iifname "z1r" ip saddr != 10.20.1.2 counter drop
   iifname "z2r" ip saddr != 10.20.2.2 counter drop
@@ -58,6 +58,7 @@ table inet rma10d {
   iifname "z8r" meta nfproto ipv6 counter drop
   iifname "z9r" meta nfproto ipv6 counter drop
   iifname "z10r" meta nfproto ipv6 counter drop
+  ct state established,related accept
   # Edge -> user API only
   ip saddr 10.20.1.2 ip daddr 10.20.2.2 tcp dport 8080 ct state new counter accept
   # User API -> approved control-plane API only

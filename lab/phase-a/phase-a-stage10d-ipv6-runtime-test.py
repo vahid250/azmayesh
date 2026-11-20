@@ -97,7 +97,8 @@ def main():
                 delta=None if before is None or after is None else after-before
                 record(src,dst,port,"DENY",actual,delta,"IPv6 forwarded traffic must be dropped on zone ingress before established-state acceptance")
         # Attempt source-address spoofing over IPv6 too; ingress policy is protocol-family-wide.
-        for src,dst in (("edge","api"),("vpn_peer","control")):
+        for src in ZONES:
+            dst="control" if src=="api" else "api"
             port=19400+ZONES[dst]
             alias=v6(src,99)
             iface=f"z{ZONES[src]}c"

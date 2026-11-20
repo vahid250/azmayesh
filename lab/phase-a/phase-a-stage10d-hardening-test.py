@@ -61,7 +61,8 @@ def main():
         server_key,server_crt=make_cert(d,"localhost",ca_key,ca_crt)
         rogue_ca_key=d/"rogue-ca.key"; rogue_ca_crt=d/"rogue-ca.crt"
         openssl("req","-x509","-newkey","rsa:2048","-nodes","-keyout",str(rogue_ca_key),"-out",str(rogue_ca_crt),"-days","2","-subj","/CN=Untrusted-Test-CA")
-        rogue_key,rogue_crt=make_cert(d,"rma-control",rogue_ca_key,rogue_ca_crt)
+        rogue_dir=d/"untrusted"; rogue_dir.mkdir(mode=0o700)
+        rogue_key,rogue_crt=make_cert(rogue_dir,"rma-control",rogue_ca_key,rogue_ca_crt)
         server_ctx=ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         server_ctx.load_cert_chain(str(server_crt),str(server_key))
         server_ctx.load_verify_locations(cafile=str(ca_crt)); server_ctx.verify_mode=ssl.CERT_REQUIRED

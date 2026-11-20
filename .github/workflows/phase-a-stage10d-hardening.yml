@@ -18,6 +18,10 @@ on:
       - "lab/phase-a/phase-a-stage10d-lab.sh"
       - ".github/workflows/phase-a-stage10d-hardening.yml"
 
+concurrency:
+  group: stage10d-hardening-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

@@ -428,8 +428,20 @@ class WireGuardMeter:
     def _remove_peer(self, key, peer=None, *, require_firewall=False):
         peer = peer or self.store.managed_peer(key) or self.peers.get(key)
         if peer is not None and peer.allowed_ips:
-            # Block all traffic from this peer before removing its WireGuard key.
-            self._revoke_peer_source(peer.allowed_ips)
+            # Prefer the network-layer guard. If nftables is unavailable, still
+            # remove the WireGuard key to stop new authenticated tunnel traffic;
+            # do not ACK until a later reconciliation installs the source guard.
+            try:
+                self._revoke_peer_source(peer.allowed_ips)
+            except Exception:
+                try:
+                    self._wg("set", self.interface, "peer", key, "remove")
+                    self.store.mark_disabled(key)
+                    self.store.unmanage(key)
+                except Exception as remove_exc:
+                    LOG.critical("firewall guard and WireGuard fallback both failed for %s (%s)",
+                                 key[:10], type(remove_exc).__name__)
+                raise
         elif require_firewall:
             raise ValueError("revocation requires a validated peer IPv4 /32 address")
         self._wg("set", self.interface, "peer", key, "remove")

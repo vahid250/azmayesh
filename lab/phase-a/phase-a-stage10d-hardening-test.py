@@ -5,6 +5,7 @@ import datetime, http.client, json, os, pathlib, socket, ssl, subprocess, tempfi
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 ZONES=("edge","api","control","admin","monitor","vpn","db","ci","rogue","vpn_peer")
+ZONE_IDS={"edge":1,"api":2,"control":3,"admin":4,"monitor":5,"vpn":6,"db":7,"ci":8,"rogue":9,"vpn_peer":10}
 RESULTS=[]
 POLICY={"available":True}
 def record(test, expected, actual, passed):
@@ -101,18 +102,18 @@ def main():
         finally:
             httpd.shutdown(); httpd.server_close(); thread.join(timeout=2)
     def egress_counter(zone):
-        source=f"10.20.{ZONES[zone]}.2"
+        source=f"10.20.{ZONE_IDS[zone]}.2"
         result=subprocess.run(["ip","netns","exec","rma10d-router","nft","list","chain","inet","rma10d","forward"],capture_output=True,text=True,check=False)
         if result.returncode!=0: return None
         for line in result.stdout.splitlines():
             if source in line and "daddr != 10.20.0.0/16" in line and "counter packets" in line:
                 import re
-                match=re.search(r"counter packets (\\d+) bytes (\\d+)",line)
+                match=re.search(r"counter packets (\d+) bytes (\d+)",line)
                 if match: return int(match.group(1))
         return None
     for zone in ZONES:
         before=egress_counter(zone)
-        probe="import socket,sys; s=socket.socket(); s.settimeout(1.5)\\ntry: s.connect(('1.1.1.1',443)); sys.exit(0)\\nexcept OSError: sys.exit(1)\\n"
+        probe="import socket,sys; s=socket.socket(); s.settimeout(1.5)\ntry: s.connect(('1.1.1.1',443)); sys.exit(0)\\nexcept OSError: sys.exit(1)\n"
         p=subprocess.run(["ip","netns","exec","rma10d-"+zone,"python3","-c",probe],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False)
         denied=p.returncode!=0
         after=egress_counter(zone)
@@ -149,10 +150,10 @@ def main():
     record("Q10DH-11 future health timestamp rejected","UNKNOWN",future_state,future_state=="UNKNOWN")
     out=os.path.join(os.environ.get("RUNNER_TEMP","/tmp"),"phase-a-stage10d-hardening-evidence.json")
     payload={"stage":"10D-Hardening","generated_at":now.isoformat(),"tests":RESULTS,
-             "passed":sum(x["passed"] for x in RESULTS),"failed":sum(not x["passed"] for x in RESULTS),
+             "passed":sum(x["outcome"]=="PASS" for x in RESULTS),"failed":sum(x["outcome"]=="FAIL" for x in RESULTS),"inconclusive":sum(x["outcome"]=="INCONCLUSIVE" for x in RESULTS),
              "scope":"Disposable CI namespaces and localhost mTLS lab only; not production/cloud proof."}
     with open(out,"w",encoding="utf-8") as f: json.dump(payload,f,indent=2)
     print(f"Evidence written: {out}")
-    if payload["failed"]: raise SystemExit(1)
+    if payload["failed"] or payload["inconclusive"]: raise SystemExit(1)
     print(f"Stage 10D-Hardening passed: {payload['passed']} checks.")
 if __name__=="__main__": main()

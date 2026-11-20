@@ -61,7 +61,7 @@ def drop_counter(zone):
     if r.returncode: return None
     for line in r.stdout.splitlines():
         if f'iifname "{iface}"' in line and "meta nfproto ipv6" in line and " drop" in line:
-            m=re.search(r"counter packets (\\d+) bytes (\\d+)",line)
+            m=re.search(r"counter packets (\d+) bytes (\d+)",line)
             if m: return int(m.group(1))
     return None
 

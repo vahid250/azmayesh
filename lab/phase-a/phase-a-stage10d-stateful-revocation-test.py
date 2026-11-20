@@ -85,27 +85,27 @@ s.close()
             time.sleep(.1)
         if not ready: raise RuntimeError("API listener did not become ready")
 
-        client_code="""import socket,sys
+        client_code="""import socket,time
 s=socket.create_connection(('10.20.2.2',8080),timeout=2)
-s.settimeout(1.2)
-print('READY',flush=True)
-for line in sys.stdin:
-    try:
-        s.sendall(line.encode())
-        data=s.recv(4096)
-        print(data.decode(errors='replace'),flush=True)
-    except socket.timeout:
-        print('TIMEOUT',flush=True)
-    except OSError as e:
-        print('ERROR:'+str(e),flush=True)
+s.settimeout(1.5)
+s.sendall(b'before-revoke\\n')
+print(s.recv(4096).decode(errors='replace'),flush=True)
+time.sleep(2.0)
+try:
+    s.sendall(b'after-revoke\\n')
+    data=s.recv(4096)
+    print(data.decode(errors='replace'),flush=True)
+except socket.timeout:
+    print('TIMEOUT',flush=True)
+except OSError as e:
+    print('ERROR:'+str(e),flush=True)
 s.close()
 """
         client=subprocess.Popen(["ip","netns","exec","rma10d-edge","python3","-u","-c",client_code],
-            stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1)
-        ready_line=client.stdout.readline().strip()
-        record("Q10DS-01 allowed TCP session established","READY",ready_line,ready_line=="READY")
-        client.stdin.write("before-revoke\n"); client.stdin.flush()
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1)
         initial=client.stdout.readline().strip()
+        record("Q10DS-01 allowed TCP session established","successful initial ACK",initial,
+               initial=="ACK:before-revoke")
         record("Q10DS-02 existing TCP session carries data before revocation","ACK:before-revoke",initial,
                initial=="ACK:before-revoke")
 

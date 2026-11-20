@@ -19,10 +19,10 @@ def make_cert(d,name,ca_key,ca_crt):
     ext=d/f"{name}.ext"
     identities={"rma-control":"URI:spiffe://rma/control","rma-user-api":"URI:spiffe://rma/user-api"}
     if name=="localhost":
-        ext_text="subjectAltName=DNS:localhost\\nkeyUsage=critical,digitalSignature,keyEncipherment\\nextendedKeyUsage=serverAuth\\n"
+        ext_text="subjectAltName=DNS:localhost\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n"
     else:
         san=identities.get(name,"")
-        ext_text=(f"subjectAltName={san}\\n" if san else "")+"keyUsage=critical,digitalSignature\\nextendedKeyUsage=clientAuth\\n"
+        ext_text=(f"subjectAltName={san}\n" if san else "")+"keyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n"
     ext.write_text(ext_text,encoding="utf-8")
     openssl("x509","-req","-in",str(csr),"-CA",str(ca_crt),"-CAkey",str(ca_key),"-CAcreateserial","-out",str(crt),"-days","2","-sha256","-extfile",str(ext))
     return key,crt

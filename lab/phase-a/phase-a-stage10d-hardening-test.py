@@ -99,8 +99,10 @@ def main():
         record("Q10DH-06 live fresh health HTTP probe","HTTP 200 healthy",f"HTTP {response.status} {body.decode(errors='replace')}",live_ok)
     finally:
         health_server.shutdown(); health_server.server_close(); health_thread.join(timeout=2)
-    state="UNKNOWN/STALE" if 31.0>30 else "HEALTHY"
-    record("Q10DH-07 stale health signal","UNKNOWN/STALE",state,state=="UNKNOWN/STALE")
+    stale_sample=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=31)
+    age=(datetime.datetime.now(datetime.timezone.utc)-stale_sample).total_seconds()
+    state="UNKNOWN/STALE" if age>30 else "HEALTHY"
+    record("Q10DH-07 stale health signal","UNKNOWN/STALE when sample age >30s",f"{state} (age={age:.1f}s)",state=="UNKNOWN/STALE")
     now=datetime.datetime.now(datetime.timezone.utc)
     out=os.path.join(os.environ.get("RUNNER_TEMP","/tmp"),"phase-a-stage10d-hardening-evidence.json")
     payload={"stage":"10D-Hardening","generated_at":now.isoformat(),"tests":RESULTS,

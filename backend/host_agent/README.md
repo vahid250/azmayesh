@@ -42,3 +42,17 @@ The API may run on Cloudflare or another backend host; it does not execute local
 6. Test exhaustion using a dedicated test entitlement and test peer before customer rollout.
 
 No service was installed, no secret was generated, and no VPN host was contacted by this change.
+
+
+## Immediate peer-source revocation firewall
+
+The signed registry includes each removed peer's canonical IPv4 `/32` in `remove_peers.allowed_ips`. Before removing a revoked or suspended WireGuard peer, the agent inserts that source address into the pre-provisioned nftables set `inet rma_guard revoked_peer_sources`. The set must be referenced by `input` and `forward` drop rules placed before established-flow accepts, scoped to the WireGuard ingress interface. The agent acknowledges revocation only after the firewall guard and WireGuard peer removal succeed. Re-authorization installs the WireGuard peer first and removes the source guard second.
+
+Required host firewall contract (operator-provisioned; the agent does not create or replace firewall policy):
+
+- `table inet rma_guard`
+- `set revoked_peer_sources { type ipv4_addr; }`
+- An early `input` drop rule for `iifname "wg0" ip saddr @revoked_peer_sources`
+- An early `forward` drop rule for `iifname "wg0" ip saddr @revoked_peer_sources`
+
+Replace `wg0` with the exact configured interface. These rules must execute before any `ct state established,related accept`. The set is restored by the host firewall configuration at boot; the agent reasserts revoked entries from the signed registry on each successful reconciliation. No firewall rules are installed automatically by the agent.

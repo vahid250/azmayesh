@@ -59,3 +59,6 @@ Replace `wg0` with the exact configured interface. These rules must execute befo
 
 
 The agent validates both pre-provisioned chains on every add/remove operation: each must contain the configured WireGuard ingress guard and have a base-chain hook priority of `-10` or earlier. Missing, late, or malformed guards prevent revocation ACK and prevent re-authorization from removing the block.
+
+ 
+If the nftables contract is unavailable during revocation, the agent makes a best-effort immediate WireGuard peer removal as a fallback, marks the local peer disabled, and deliberately withholds the backend ACK. It retries the firewall source guard on subsequent registry polls; the backend state remains pending until both the guard and removal are confirmed. This fallback prevents new authenticated tunnel traffic but is not a substitute for the early firewall guard, which is required to terminate packets from any already tracked flow.

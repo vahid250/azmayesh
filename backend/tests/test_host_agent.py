@@ -510,6 +510,7 @@ def test_revocation_firewall_failure_falls_back_to_wireguard_removal_without_ack
     # Once the operator restores the nftables contract, reconciliation
     # installs the guard and only then acknowledges the pending revocation.
     wg.fail_guard = False
+    wg.fail_nft_add = False
     meter.sync_registry()
     assert "10.0.0.2" in wg.revoked_ips
     assert acks and b'"state":"revoked"' in acks[0]
@@ -548,7 +549,10 @@ def test_revocation_guard_must_be_present_before_any_peer_removal_or_ack(tmp_pat
         registry_fetcher=lambda *_: registry,
     )
     meter.sync_registry()
-    assert not any(c[1:3] == ["set","wg0"] and "remove" in c for c in wg.calls)
+    # Missing firewall guard triggers WireGuard removal as a fallback,
+    # but backend state must remain pending and unacknowledged.
+    assert any(c[1:3] == ["set","wg0"] and "remove" in c for c in wg.calls)
+    assert store.disabled(PUB)
     assert not acks
     store.close()
 

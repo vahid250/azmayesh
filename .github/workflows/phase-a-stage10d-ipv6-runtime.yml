@@ -8,11 +8,13 @@ on:
       - security/phase-10d-hardening
     paths:
       - "lab/phase-a/phase-a-stage10d-ipv6-runtime-test.py"
+      - "lab/phase-a/phase-a-stage10d-live-rule-audit.py"
       - "lab/phase-a/phase-a-stage10d-lab.sh"
       - ".github/workflows/phase-a-stage10d-ipv6-runtime.yml"
   pull_request:
     paths:
       - "lab/phase-a/phase-a-stage10d-ipv6-runtime-test.py"
+      - "lab/phase-a/phase-a-stage10d-live-rule-audit.py"
       - "lab/phase-a/phase-a-stage10d-lab.sh"
       - ".github/workflows/phase-a-stage10d-ipv6-runtime.yml"
 

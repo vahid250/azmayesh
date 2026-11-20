@@ -122,4 +122,17 @@ Before starting the agent, provision the dedicated set and early drop rules in t
         }
     }
 
-Load this policy through the host's persistent nftables configuration and verify both guards appear before established-flow accept rules. Do not flush or replace an existing host firewall. The agent only mutates elements in the pre-existing set; it never creates tables, chains, sets, or policy rules. If the set is absent or nftables rejects an update, the agent must not acknowledge revocation. Verify the host firewall restore process recreates the empty set at boot; the signed registry repopulates revoked peer addresses on the next successful reconciliation.
+Load this policy through the host's persistent nftables configuration and verify both guards appear before established-flow accept rules. Do not flush or replace an existing host firewall. The agent only mutates elements in the pre-existing set; it never creates tables, chains, sets, or policy rules. If the set is absent or nftables rejects an update, the agent must not acknowledge revocation.
+
+The systemd agent unit is ordered after `nftables.service` so the persistent firewall policy is loaded first. The agent also stores revoked IPv4 sources in its protected SQLite state database (`/var/lib/rma-meter/usage.sqlite3`) before changing the volatile nftables set. On every authenticated registry reconciliation it validates both guard chains and rehydrates missing set elements from this durable ledger before enabling any authorized peer. Preserve this database across agent upgrades/restarts and include it in the protected host backup; never copy it to an untrusted machine.
+
+### Restart and recovery test (staging only)
+
+1. Revoke the lab peer and verify its IP appears in both the agent's durable revocation ledger and `nft list set inet rma_guard revoked_peer_sources`.
+2. Stop the agent, reload the host's persistent nftables ruleset in the isolated staging environment (which recreates the dynamic set empty), then start the agent.
+3. Within one registry polling cycle, verify the revoked IP is restored to the nftables set and the revoked WireGuard public key remains absent. Verify no peer-status ACK is sent until both firewall and WireGuard states are confirmed.
+4. Restart the agent a second time without reloading nftables; confirm reconciliation is idempotent and does not fail on an already-present set element.
+5. Test reauthorization for the same IP: confirm the WireGuard peer is installed first, then the nftables source element and durable ledger entry are removed.
+6. Repeat with either guard chain missing. The agent must withhold the revocation ACK and attempt WireGuard-key removal as a fallback. Restore the firewall contract and confirm the next reconciliation repairs the source set and only then acknowledges the backend state.
+
+Do not perform a full firewall flush on a host that carries management or production traffic. Use a disposable staging namespace/VM and retain an out-of-band recovery path.

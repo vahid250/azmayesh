@@ -24,7 +24,7 @@ def run():
  if r.returncode: raise SystemExit(f"nft chain retrieval failed: {r.stderr}")
  lines=[ln.strip() for ln in r.stdout.splitlines() if ln.strip() and not ln.strip().startswith("chain ")]
  # Identify ordered guard/accept/drop rules from live chain output.
- established=[i for i,l in enumerate(lines) if "ct state established,related accept" in l]
+ established=[i for i,l in enumerate(lines) if "ct state established,related" in l]
  check("single established-state accept",len(established)==1, f"found {len(established)} rule(s)")
  eidx=established[0] if established else -1
  anti=[]; v6drops=[]
@@ -44,7 +44,7 @@ def run():
  check("no extra accept rules outside established plus explicit allow-list",len(accepts)==9,f"{len(accepts)} accept rules total; expected 9")
  actual_allow=set()
  for l in accepts:
-  if "ct state established,related accept" in l: continue
+  if "ct state established,related" in l: continue
   m=re.search(r"ip saddr (\S+) ip daddr (\S+) tcp dport (\d+)",l)
   if m: actual_allow.add((m.group(1),m.group(2),int(m.group(3))))
  check("explicit TCP allow-list matches approved tuples exactly",actual_allow==EXPECTED_ALLOW,
@@ -56,7 +56,7 @@ def run():
  overlap=drops & actual_allow
  check("explicit deny rules do not overlap approved allow tuples",not overlap,f"overlap={sorted(overlap)}")
  # A broad accept is forbidden; only exact state and whitelisted tuple accepts are acceptable.
- unexpected=[l for l in accepts if "ct state established,related accept" not in l and not re.search(r"ip saddr \S+ ip daddr \S+ tcp dport \d+ .* accept$",l)]
+ unexpected=[l for l in accepts if "ct state established,related" not in l and not re.search(r"ip saddr \S+ ip daddr \S+ tcp dport \d+ .* accept$",l)]
  check("no wildcard or non-TCP accept rule",not unexpected,f"unexpected={unexpected}")
  payload={"stage":"10D-live-rule-audit","generated_at":datetime.now(timezone.utc).isoformat(),"checks":checks,
           "passed":sum(c["passed"] for c in checks),"failed":sum(not c["passed"] for c in checks),

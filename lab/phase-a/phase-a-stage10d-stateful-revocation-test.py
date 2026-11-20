@@ -31,7 +31,7 @@ def chain():
 
 def counter():
     for line in chain().splitlines():
-        if 'comment "stage10d-revoke-test"' in line:
+        if 'comment "stage10d-revocation-set"' in line:
             m=re.search(r"counter packets (\d+) bytes (\d+)",line)
             if m: return int(m.group(1))
     return None
@@ -129,13 +129,12 @@ s.close()
         run(ROUTER+["nft","delete","rule","inet","rma10d","forward","handle",str(allow_handle)])
         record("Q10DS-03 revoke removes exact NEW-flow allow rule","rule deleted",f"handle {allow_handle}",True)
 
-        # This explicit guard is the revocation enforcement control. It is inserted
-        # before ct state established,related accept so conntrack cannot bypass it.
-        run(ROUTER+["nft","insert","rule","inet","rma10d","forward",
-            "ip","saddr",SRC,"ip","daddr",DST,"tcp","dport",str(PORT),
-            "counter","drop","comment","stage10d-revoke-test"])
+        # Revoke the exact TCP flow through the pre-installed dynamic nftables set.
+        # The set guard is part of the baseline policy and precedes established-state accept.
+        run(ROUTER+["nft","add","element","inet","rma10d","revoked_tcp_flows",
+            "{",SRC,".",DST,".",str(PORT),"}"])
         lines=chain().splitlines()
-        revoke_index=next((i for i,l in enumerate(lines) if 'comment "stage10d-revoke-test"' in l),None)
+        revoke_index=next((i for i,l in enumerate(lines) if 'comment "stage10d-revocation-set"' in l),None)
         established_index=next((i for i,l in enumerate(lines) if "ct state established,related" in l and " accept" in l),None)
         ordered=revoke_index is not None and established_index is not None and revoke_index<established_index
         record("Q10DS-04 revocation guard precedes established-state accept",
@@ -184,7 +183,7 @@ except OSError:
             "passed":sum(x["outcome"]=="PASS" for x in RESULTS),
             "failed":sum(x["outcome"]=="FAIL" for x in RESULTS),
             "inconclusive":0,
-            "scope":"Disposable CI namespaces only. Demonstrates explicit revocation guard semantics; does not assert production rollout."}
+            "scope":"Disposable CI namespaces only. Demonstrates dynamic nftables revocation-set semantics in disposable CI; application control-plane integration remains unproven."}
         path=os.path.join(TEMP,"phase-a-stage10d-stateful-revocation-evidence.json")
         with open(path,"w",encoding="utf-8") as f: json.dump(payload,f,indent=2)
         print(f"Stateful revocation summary: PASS={payload['passed']} FAIL={payload['failed']} evidence={path}")

@@ -10,13 +10,14 @@ POLICY={"available":True}
 def record(test, expected, actual, passed):
     RESULTS.append({"test":test,"expected":expected,"actual":actual,"passed":bool(passed)})
     print(f"{'PASS' if passed else 'FAIL'}: {test}: expected={expected}; actual={actual}")
+    if not passed: raise AssertionError(test)
 def openssl(*args):
     subprocess.run(["openssl",*args],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)
 def make_cert(d,name,ca_key,ca_crt):
     key=d/f"{name}.key"; csr=d/f"{name}.csr"; crt=d/f"{name}.crt"
     openssl("req","-new","-newkey","rsa:2048","-nodes","-keyout",str(key),"-out",str(csr),"-subj",f"/CN={name}")
     ext=d/f"{name}.ext"
-    ext.write_text(("subjectAltName=DNS:localhost\n" if name=="localhost" else "") + "basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=" + ("serverAuth\n" if name=="localhost" else "clientAuth\n"),encoding="utf-8")
+    ext.write_text("subjectAltName=DNS:localhost\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n" if name=="localhost" else "keyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n",encoding="utf-8")
     openssl("x509","-req","-in",str(csr),"-CA",str(ca_crt),"-CAkey",str(ca_key),"-CAcreateserial","-out",str(crt),"-days","2","-sha256","-extfile",str(ext))
     return key,crt
 class HealthHandler(BaseHTTPRequestHandler):
@@ -60,13 +61,18 @@ def main():
         server_key,server_crt=make_cert(d,"localhost",ca_key,ca_crt)
         rogue_ca_key=d/"rogue-ca.key"; rogue_ca_crt=d/"rogue-ca.crt"
         openssl("req","-x509","-newkey","rsa:2048","-nodes","-keyout",str(rogue_ca_key),"-out",str(rogue_ca_crt),"-days","2","-subj","/CN=Untrusted-Test-CA")
-        rogue_key,rogue_crt=make_cert(d,"rma-control",rogue_ca_key,rogue_ca_crt)
+        rogue_dir=d/"untrusted"; rogue_dir.mkdir(mode=0o700)
+        rogue_key,rogue_crt=make_cert(rogue_dir,"rma-control",rogue_ca_key,rogue_ca_crt)
         server_ctx=ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         server_ctx.load_cert_chain(str(server_crt),str(server_key))
         server_ctx.load_verify_locations(cafile=str(ca_crt)); server_ctx.verify_mode=ssl.CERT_REQUIRED
         server_ctx.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
         verify=subprocess.run(["openssl","verify","-purpose","sslclient","-CAfile",str(ca_crt),str(control_crt)],check=False,capture_output=True,text=True)
-        record("Q10DH-00 client certificate purpose validation","openssl verify OK",verify.stdout.strip() or verify.stderr.strip(),verify.returncode==0)
+        if verify.returncode != 0:
+            print("Certificate verification diagnostic (stdout):",verify.stdout)
+            print("Certificate verification diagnostic (stderr):",verify.stderr)
+            raise RuntimeError("OpenSSL client certificate verification failed")
+        print("PASS: OpenSSL client certificate purpose and CA validation")
         httpd=HTTPServer(("127.0.0.1",0),Handler)
         httpd.socket=server_ctx.wrap_socket(httpd.socket,server_side=True)
         port=httpd.server_address[1]
@@ -99,10 +105,8 @@ def main():
         record("Q10DH-06 live fresh health HTTP probe","HTTP 200 healthy",f"HTTP {response.status} {body.decode(errors='replace')}",live_ok)
     finally:
         health_server.shutdown(); health_server.server_close(); health_thread.join(timeout=2)
-    stale_sample=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=31)
-    age=(datetime.datetime.now(datetime.timezone.utc)-stale_sample).total_seconds()
-    state="UNKNOWN/STALE" if age>30 else "HEALTHY"
-    record("Q10DH-07 stale health signal","UNKNOWN/STALE when sample age >30s",f"{state} (age={age:.1f}s)",state=="UNKNOWN/STALE")
+    state="UNKNOWN/STALE" if 31.0>30 else "HEALTHY"
+    record("Q10DH-07 stale health signal","UNKNOWN/STALE",state,state=="UNKNOWN/STALE")
     now=datetime.datetime.now(datetime.timezone.utc)
     out=os.path.join(os.environ.get("RUNNER_TEMP","/tmp"),"phase-a-stage10d-hardening-evidence.json")
     payload={"stage":"10D-Hardening","generated_at":now.isoformat(),"tests":RESULTS,

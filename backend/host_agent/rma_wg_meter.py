@@ -588,10 +588,23 @@ class WireGuardMeter:
     def sync_registry(self):
         if self.registry_fetcher is None:
             return self.peers
-        # Check the guard contract and restore durable revocations before any
-        # authorized peer can be reconciled or re-enabled.
-        self.restore_revoked_sources()
         active, removals = self._fetch_registry()
+        # Restore durable revocations before any authorized peer can be
+        # reconciled or re-enabled. If the firewall contract is broken, still
+        # attempt immediate WireGuard-key removal for backend-revoked peers;
+        # never ACK them until the source guard can be restored.
+        try:
+            self.restore_revoked_sources()
+        except Exception:
+            for key, peer in removals.items():
+                try:
+                    self._remove_peer(key, peer, require_firewall=True)
+                except Exception as remove_exc:
+                    LOG.critical(
+                        "revoked peer fallback removal failed for client %s (%s)",
+                        peer.client_id, type(remove_exc).__name__,
+                    )
+            raise
         previously_managed = self.store.current_peers()
         stale_keys = self.store.replace_registry(active)
         removal_map = dict(removals)

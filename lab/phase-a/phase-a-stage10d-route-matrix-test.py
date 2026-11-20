@@ -72,7 +72,7 @@ def anti_spoof_counter(zone):
  import re
  for line in result.stdout.splitlines():
   if f'iifname "{iface}"' in line and f"ip saddr != {assigned}" in line and "counter packets" in line:
-   match=re.search(r"counter packets (\\d+) bytes (\\d+)",line)
+   match=re.search(r"counter packets (\d+) bytes (\d+)",line)
    if match:return int(match.group(1))
  return None
 def test_source_spoof():

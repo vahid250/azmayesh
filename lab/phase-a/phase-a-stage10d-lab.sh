@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 # Disposable Stage 10D network: all zone interfaces are in named namespaces.
+# Keep this topology covered by hardening, route, IPv6, and stateful-revocation CI.
 # Only the router namespace owns nftables forwarding policy; host firewall is untouched.
 readonly ROUTER="rma10d-router"
 readonly EGRESS="rma10d-egress"

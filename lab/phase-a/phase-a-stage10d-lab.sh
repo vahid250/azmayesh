@@ -3,15 +3,15 @@ set -Eeuo pipefail
 # Disposable Stage 10D network: all zone interfaces are in named namespaces.
 # Only the router namespace owns nftables forwarding policy; host firewall is untouched.
 readonly ROUTER="rma10d-router"
-readonly TABLE="rma10d"
+readonly EGRESS="rma10d-egress"
 declare -A IDX=( [edge]=1 [api]=2 [control]=3 [admin]=4 [monitor]=5 [vpn]=6 [db]=7 [ci]=8 [rogue]=9 [vpn_peer]=10 )
 zones=(edge api control admin monitor vpn db ci rogue vpn_peer)
 exists_ns(){ ip netns list | awk '{print $1}' | grep -Fxq "$1"; }
-cleanup(){ for z in "${zones[@]}"; do exists_ns "rma10d-$z" && ip netns del "rma10d-$z" || true; done; exists_ns "$ROUTER" && ip netns del "$ROUTER" || true; }
+cleanup(){ for z in "${zones[@]}"; do exists_ns "rma10d-$z" && ip netns del "rma10d-$z" || true; done; exists_ns "$EGRESS" && ip netns del "$EGRESS" || true; exists_ns "$ROUTER" && ip netns del "$ROUTER" || true; }
 need_root(){ [[ $EUID -eq 0 ]] || { echo "Run with sudo/root" >&2; exit 1; }; }
 up(){
  need_root
- for n in "$ROUTER" "${zones[@]/#/rma10d-}"; do exists_ns "$n" && { echo "Refusing existing namespace: $n" >&2; exit 1; }; done
+ for n in "$ROUTER" "$EGRESS" "${zones[@]/#/rma10d-}"; do exists_ns "$n" && { echo "Refusing existing namespace: $n" >&2; exit 1; }; done
  ip netns add "$ROUTER"; ip -n "$ROUTER" link set lo up
  for z in "${zones[@]}"; do
    ns="rma10d-$z"; i="${IDX[$z]}"; net="10.20.$i"
@@ -22,6 +22,14 @@ up(){
    ip -n "$ns" route add default via "$net.1"
    ip -n "$ROUTER" addr add "$net.1/30" dev "z${i}r"; ip -n "$ROUTER" link set "z${i}r" up
  done
+ # Isolated egress transit: packets reach a disposable external namespace, never host/global network.
+ ip netns add "$EGRESS"; ip -n "$EGRESS" link set lo up
+ ip link add "rma10d-out" type veth peer name "rma10d-in"
+ ip link set "rma10d-out" netns "$ROUTER"; ip link set "rma10d-in" netns "$EGRESS"
+ ip -n "$ROUTER" addr add 198.18.0.1/30 dev "rma10d-out"; ip -n "$ROUTER" link set "rma10d-out" up
+ ip -n "$EGRESS" addr add 198.18.0.2/30 dev "rma10d-in"; ip -n "$EGRESS" link set "rma10d-in" up
+ ip -n "$ROUTER" route add default via 198.18.0.2
+ ip -n "$EGRESS" route add 10.20.0.0/16 via 198.18.0.1
  ip netns exec "$ROUTER" sysctl -q -w net.ipv4.ip_forward=1
  ip netns exec "$ROUTER" nft -f - <<'NFT'
 table inet rma10d {
@@ -58,5 +66,5 @@ NFT
  echo "PASS: Stage 10D disposable zone topology created; router forward policy is default drop."
 }
 down(){ need_root; cleanup; echo "Removed only Stage 10D namespaces."; }
-status(){ need_root; for n in "$ROUTER" "${zones[@]/#/rma10d-}"; do exists_ns "$n" && echo "present $n" || echo "absent $n"; done; }
+status(){ need_root; for n in "$ROUTER" "$EGRESS" "${zones[@]/#/rma10d-}"; do exists_ns "$n" && echo "present $n" || echo "absent $n"; done; }
 case "${1:-}" in up) up;; down) down;; status) status;; *) echo "Usage: $0 {up|status|down}" >&2; exit 2;; esac

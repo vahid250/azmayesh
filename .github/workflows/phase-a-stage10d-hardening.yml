@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - security/phase-10d-remediation
       - security/phase-10d-hardening
     paths:
       - "lab/phase-a/phase-a-stage10d-hardening-test.py"
@@ -12,6 +13,7 @@ on:
   pull_request:
     paths:
       - "lab/phase-a/phase-a-stage10d-hardening-test.py"
+      - "lab/phase-a/phase-a-stage10d-route-matrix-test.py"
       - ".github/workflows/phase-a-stage10d-hardening.yml"
 
 permissions:
@@ -40,9 +42,18 @@ jobs:
           cleanup() { sudo bash lab/phase-a/phase-a-stage10d-lab.sh down || true; }
           trap cleanup EXIT
           sudo bash lab/phase-a/phase-a-stage10d-lab.sh up
+          set +e
           sudo -E python3 lab/phase-a/phase-a-stage10d-hardening-test.py 2>&1 | tee "$LOG"
+          HARDENING_STATUS=${PIPESTATUS[0]}
           MATRIX_LOG="$RUNNER_TEMP/phase-a-stage10d-route-matrix.log"
           sudo -E python3 lab/phase-a/phase-a-stage10d-route-matrix-test.py 2>&1 | tee "$MATRIX_LOG"
+          MATRIX_STATUS=${PIPESTATUS[0]}
+          set -e
+          echo "Hardening exit code: $HARDENING_STATUS"
+          echo "Route Matrix exit code: $MATRIX_STATUS"
+          if [ "$HARDENING_STATUS" -ne 0 ] || [ "$MATRIX_STATUS" -ne 0 ]; then
+            exit 1
+          fi
       - name: Upload complete Stage 10D-Hardening evidence
         if: always()
         uses: actions/upload-artifact@v4

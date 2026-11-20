@@ -35,11 +35,16 @@ def probe(src,dst,port):
  code=f"import socket; s=socket.socket(); s.settimeout(1); s.connect(('{ip}',{port})); d=s.recv(2); s.close(); exit(0 if d==b'OK' else 2)"
  return run(["ip","netns","exec","rma10d-"+src,"python3","-c",code]).returncode==0
 def record(src,dst,port,expect,description,actual):
- passed=actual==expect
- RESULTS.append({"test":f"{src}->{dst}:{port}","expected":"ALLOW" if expect else "DENY","actual":"ALLOW" if actual else "DENY","passed":passed,"description":description})
- print(f"{'PASS' if passed else 'FAIL'} {src}->{dst}:{port} expected={'ALLOW' if expect else 'DENY'} actual={'ALLOW' if actual else 'DENY'} — {description}")
+ outcome="PASS" if actual==expect else "FAIL"
+ passed=outcome=="PASS"
+ RESULTS.append({"test":f"{src}->{dst}:{port}","expected":"ALLOW" if expect else "DENY","actual":"ALLOW" if actual else "DENY","outcome":outcome,"passed":passed,"description":description})
+ print(f"{outcome} {src}->{dst}:{port} expected={'ALLOW' if expect else 'DENY'} actual={'ALLOW' if actual else 'DENY'} — {description}")
+def record_inconclusive(src,dst,port,expect,description,reason):
+ RESULTS.append({"test":f"{src}->{dst}:{port}","expected":"ALLOW" if expect else "DENY","actual":"UNKNOWN","outcome":"INCONCLUSIVE","passed":False,"description":description,"reason":reason})
+ print(f"INCONCLUSIVE {src}->{dst}:{port} expected={'ALLOW' if expect else 'DENY'} actual=UNKNOWN — {description} ({reason})")
 def main():
  servers={}
+ readiness={}
  try:
   for src,dst,port,expect,desc in MATRIX:
    key=(dst,port)
@@ -52,16 +57,21 @@ def main():
       if probe(dst,dst,port): ready=True; break
      except Exception: pass
      time.sleep(.1)
+    readiness[key]=ready
     if not ready:
-     record(src,dst,port,expect,desc,False if expect else True); continue
+     record_inconclusive(src,dst,port,expect,desc,"destination listener/readiness probe failed; policy path not evaluated"); continue
+   if readiness.get(key) is False:
+    record_inconclusive(src,dst,port,expect,desc,"destination readiness previously failed for this dst/port"); continue
    try: actual=probe(src,dst,port)
-   except Exception: actual=False
-   record(src,dst,port,expect,desc,actual)
-  payload={"stage":"10D-route-matrix","generated_at":datetime.now(timezone.utc).isoformat(),"checks":RESULTS,"passed":sum(x["passed"] for x in RESULTS),"failed":sum(not x["passed"] for x in RESULTS),"scope":"Disposable CI namespaces only; not production/cloud proof."}
+   except Exception as exc: actual=None
+   if actual is None:
+    record_inconclusive(src,dst,port,expect,desc,"probe execution error")
+   else: record(src,dst,port,expect,desc,actual)
+  payload={"stage":"10D-route-matrix","generated_at":datetime.now(timezone.utc).isoformat(),"checks":RESULTS,"passed":sum(x["outcome"]=="PASS" for x in RESULTS),"failed":sum(x["outcome"]=="FAIL" for x in RESULTS),"inconclusive":sum(x["outcome"]=="INCONCLUSIVE" for x in RESULTS),"scope":"Disposable CI namespaces only; not production/cloud proof."}
   path=os.path.join(TEMP,"phase-a-stage10d-route-matrix-evidence.json")
   with open(path,"w",encoding="utf-8") as f: json.dump(payload,f,indent=2)
   print(f"Summary: {payload['passed']}/{len(RESULTS)} checks passed; evidence {path}")
-  if payload["failed"]: raise SystemExit(1)
+  if payload["failed"] or payload["inconclusive"]: raise SystemExit(1)
  finally:
   for p in servers.values():
    if p.poll() is None: p.terminate()

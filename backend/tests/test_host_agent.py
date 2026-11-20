@@ -513,7 +513,7 @@ def test_revocation_firewall_failure_falls_back_to_wireguard_removal_without_ack
     wg.fail_nft_add = False
     meter.sync_registry()
     assert "10.0.0.2" in wg.revoked_ips
-    assert acks and b'"state":"revoked"' in acks[0]
+    assert acks and b'"state":"revoked"' in acks[0][2]
     store.close()
 
 

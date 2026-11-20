@@ -12,10 +12,10 @@ need_root(){ [[ $EUID -eq 0 ]] || { echo "Run with sudo/root" >&2; exit 1; }; }
 up(){
  need_root
  for n in "$ROUTER" "$EGRESS" "${zones[@]/#/rma10d-}"; do exists_ns "$n" && { echo "Refusing existing namespace: $n" >&2; exit 1; }; done
- ip netns add "$ROUTER"; ip -n "$ROUTER" link set lo up
+ ip netns add "$ROUTER"; ip netns exec "$ROUTER" sysctl -q -w net.ipv6.conf.all.disable_ipv6=0; ip netns exec "$ROUTER" sysctl -q -w net.ipv6.conf.default.disable_ipv6=0; ip -n "$ROUTER" link set lo up
  for z in "${zones[@]}"; do
    ns="rma10d-$z"; i="${IDX[$z]}"; net="10.20.$i"
-   ip netns add "$ns"; ip -n "$ns" link set lo up
+   ip netns add "$ns"; ip netns exec "$ns" sysctl -q -w net.ipv6.conf.all.disable_ipv6=0; ip netns exec "$ns" sysctl -q -w net.ipv6.conf.default.disable_ipv6=0; ip -n "$ns" link set lo up
    ip link add "z${i}c" type veth peer name "z${i}r"
    ip link set "z${i}c" netns "$ns"; ip link set "z${i}r" netns "$ROUTER"
    ip -n "$ns" addr add "$net.2/30" dev "z${i}c"; ip -n "$ns" -6 addr add "fd10:10:${i}::2/64" dev "z${i}c"; ip -n "$ns" link set "z${i}c" up
@@ -33,7 +33,6 @@ up(){
  ip -n "$EGRESS" route add 10.20.0.0/16 via 198.18.0.1
  ip netns exec "$ROUTER" sysctl -q -w net.ipv4.ip_forward=1
  ip netns exec "$ROUTER" sysctl -q -w net.ipv6.conf.all.forwarding=1
- for ns in "$ROUTER" "${zones[@]/#/rma10d-}"; do ip netns exec "$ns" sysctl -q -w net.ipv6.conf.all.disable_ipv6=0; ip netns exec "$ns" sysctl -q -w net.ipv6.conf.default.disable_ipv6=0; done
  ip netns exec "$ROUTER" nft -f - <<'NFT'
 table inet rma10d {
  chain forward {

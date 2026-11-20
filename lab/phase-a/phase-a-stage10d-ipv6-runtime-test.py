@@ -36,15 +36,19 @@ s.close()
 """
     ready=False
     proc=subprocess.Popen(["ip","netns","exec",f"rma10d-{zone}","python3","-c",server_code],
-        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     for _ in range(40):
         if proc.poll() is not None: break
         try:
             readiness_code=f"import socket; s=socket.socket(socket.AF_INET6,socket.SOCK_STREAM); s.settimeout(0.3); s.connect(('{addr}',{port})); s.recv(2); s.close()"
             ready_probe=cmd(["ip","netns","exec",f"rma10d-{zone}","python3","-c",readiness_code],timeout=2)
             if ready_probe.returncode==0: ready=True; break
+            time.sleep(0.1)
         except OSError: time.sleep(0.1)
     if not ready:
+        if proc.poll() is not None:
+            out,err=proc.communicate(timeout=1)
+            raise RuntimeError(f"IPv6 listener process exited for {zone}:{port}; stdout={out!r}; stderr={err!r}")
         proc.terminate()
         try: proc.wait(timeout=2)
         except subprocess.TimeoutExpired: proc.kill()

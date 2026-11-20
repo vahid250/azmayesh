@@ -18,6 +18,7 @@ import urllib.error
 import urllib.request
 import uuid
 import threading
+from functools import wraps
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -149,11 +150,21 @@ def load_peers(path: str) -> dict[str, Peer]:
     return result
 
 
+def _store_serialized(method):
+    """Serialize compound SQLite operations across host-agent threads."""
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self._db_lock:
+            return method(self, *args, **kwargs)
+    return wrapped
+
+
 class MeteringStore:
     """Durable byte baselines, managed peer inventory, and retry-safe outbox."""
 
     def __init__(self, path: str):
-        self.db = sqlite3.connect(path, timeout=10)
+        self._db_lock = threading.RLock()
+        self.db = sqlite3.connect(path, timeout=10, check_same_thread=False)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
         self.db.executescript("""
@@ -177,10 +188,12 @@ class MeteringStore:
             self.db.execute("ALTER TABLE pending_events ADD COLUMN failure_status INTEGER")
         self.db.commit()
 
+    @_store_serialized
     def disabled(self, key):
         row = self.db.execute("SELECT disabled FROM peer_counters WHERE public_key=?", (key,)).fetchone()
         return bool(row and row[0])
 
+    @_store_serialized
     def pending(self, key):
         row = self.db.execute(
             "SELECT event_id,client_id,bytes_used,body,created_at,failure_status FROM pending_events WHERE public_key=?",
@@ -188,6 +201,7 @@ class MeteringStore:
         ).fetchone()
         return PendingEvent(row[0], row[1], key, row[2], bytes(row[3]), row[4], row[5]) if row else None
 
+    @_store_serialized
     def pending_all(self):
         rows = self.db.execute(
             """SELECT event_id,client_id,public_key,bytes_used,body,created_at,failure_status
@@ -195,6 +209,7 @@ class MeteringStore:
         ).fetchall()
         return [PendingEvent(row[0], row[1], row[2], row[3], bytes(row[4]), row[5], row[6]) for row in rows]
 
+    @_store_serialized
     def prepare_delta(self, peer, current_total):
         if current_total < 0:
             raise ValueError("counter total cannot be negative")
@@ -227,6 +242,7 @@ class MeteringStore:
             )
         return self.pending(peer.public_key)
 
+    @_store_serialized
     def acknowledge(self, key, event_id):
         with self.db:
             self.db.execute(
@@ -234,6 +250,7 @@ class MeteringStore:
                 (key, event_id),
             )
 
+    @_store_serialized
     def mark_disabled(self, key):
         with self.db:
             self.db.execute(
@@ -242,6 +259,7 @@ class MeteringStore:
                 (key,),
             )
     
+    @_store_serialized
     def mark_permanent_failure(self, key, event_id, status):
         with self.db:
             self.db.execute(
@@ -250,10 +268,12 @@ class MeteringStore:
             )
 
 
+    @_store_serialized
     def discard_pending(self, key):
         with self.db:
             self.db.execute("DELETE FROM pending_events WHERE public_key=?", (key,))
 
+    @_store_serialized
     def enable(self, key):
         with self.db:
             self.db.execute(
@@ -262,6 +282,7 @@ class MeteringStore:
                 (key,),
             )
 
+    @_store_serialized
     def replace_registry(self, peers: dict[str, Peer]) -> list[str]:
         old = {row[0] for row in self.db.execute("SELECT public_key FROM managed_peers")}
         new = set(peers)
@@ -274,22 +295,26 @@ class MeteringStore:
             )
         return sorted(old - new)
 
+    @_store_serialized
     def unmanage(self, key):
         with self.db:
             self.db.execute("DELETE FROM managed_peers WHERE public_key=?", (key,))
 
+    @_store_serialized
     def current_peers(self) -> dict[str, Peer]:
         rows = self.db.execute(
             "SELECT public_key,client_id,allowed_ips FROM managed_peers"
         ).fetchall()
         return {key: Peer(client_id, key, allowed_ips) for key, client_id, allowed_ips in rows}
 
+    @_store_serialized
     def managed_peer(self, key):
         row = self.db.execute(
             "SELECT client_id,allowed_ips FROM managed_peers WHERE public_key=?", (key,)
         ).fetchone()
         return Peer(row[0], key, row[1]) if row else None
 
+    @_store_serialized
     def remember_revoked_source(self, allowed_ips):
         interface = _validate_peer_allowed_ips(allowed_ips)
         address = str(ipaddress.ip_interface(interface).ip)
@@ -299,17 +324,20 @@ class MeteringStore:
                 (address, time.time()),
             )
 
+    @_store_serialized
     def forget_revoked_source(self, allowed_ips):
         interface = _validate_peer_allowed_ips(allowed_ips)
         address = str(ipaddress.ip_interface(interface).ip)
         with self.db:
             self.db.execute("DELETE FROM revoked_peer_sources WHERE address=?", (address,))
 
+    @_store_serialized
     def revoked_sources(self):
         return [row[0] for row in self.db.execute(
             "SELECT address FROM revoked_peer_sources ORDER BY address"
         ).fetchall()]
 
+    @_store_serialized
     def has_revoked_source(self, allowed_ips):
         interface = _validate_peer_allowed_ips(allowed_ips)
         address = str(ipaddress.ip_interface(interface).ip)
@@ -317,16 +345,19 @@ class MeteringStore:
             "SELECT 1 FROM revoked_peer_sources WHERE address=?", (address,)
         ).fetchone() is not None
 
+    @_store_serialized
     def note_failure(self, name: str, now: float) -> float:
         key = f"{name}_fail_since"
         with self.db:
             self.db.execute("INSERT OR IGNORE INTO agent_state(key,value) VALUES(?,?)", (key, now))
         return self.db.execute("SELECT value FROM agent_state WHERE key=?", (key,)).fetchone()[0]
 
+    @_store_serialized
     def clear_failure(self, name: str):
         with self.db:
             self.db.execute("DELETE FROM agent_state WHERE key=?", (f"{name}_fail_since",))
 
+    @_store_serialized
     def close(self):
         self.db.close()
 

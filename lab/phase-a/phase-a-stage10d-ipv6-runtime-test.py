@@ -40,8 +40,9 @@ s.close()
     for _ in range(40):
         if proc.poll() is not None: break
         try:
-            s=socket.socket(socket.AF_INET6,socket.SOCK_STREAM); s.settimeout(0.3)
-            s.connect((addr,port)); s.recv(2); s.close(); ready=True; break
+            readiness_code=f"import socket; s=socket.socket(socket.AF_INET6,socket.SOCK_STREAM); s.settimeout(0.3); s.connect(('{addr}',{port})); s.recv(2); s.close()"
+            ready_probe=cmd(["ip","netns","exec",f"rma10d-{zone}","python3","-c",readiness_code],timeout=2)
+            if ready_probe.returncode==0: ready=True; break
         except OSError: time.sleep(0.1)
     if not ready:
         proc.terminate()

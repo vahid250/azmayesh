@@ -66,7 +66,7 @@ def main():
         server_ctx.load_cert_chain(str(server_crt),str(server_key))
         server_ctx.load_verify_locations(cafile=str(ca_crt)); server_ctx.verify_mode=ssl.CERT_REQUIRED
         server_ctx.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
-        subprocess.run(["openssl","verify","-purpose","sslclient","-CAfile",str(ca_crt),str(control_crt)],check=True,capture_output=True,text=True)
+        verify=subprocess.run(["openssl","verify","-purpose","sslclient","-CAfile",str(ca_crt),str(control_crt)],check=False,capture_output=True,text=True)\n        if verify.returncode != 0:\n            print("Certificate verification diagnostic (stdout):",verify.stdout)\n            print("Certificate verification diagnostic (stderr):",verify.stderr)\n            raise RuntimeError("OpenSSL client certificate verification failed")\n        print("PASS: OpenSSL client certificate purpose and CA validation")
         httpd=HTTPServer(("127.0.0.1",0),Handler)
         httpd.socket=server_ctx.wrap_socket(httpd.socket,server_side=True)
         port=httpd.server_address[1]

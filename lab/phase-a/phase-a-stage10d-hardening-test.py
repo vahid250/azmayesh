@@ -110,9 +110,21 @@ def main():
         record("Q10DH-07 live fresh health HTTP probe","HTTP 200 healthy",f"HTTP {response.status} {body.decode(errors='replace')}",live_ok)
     finally:
         health_server.shutdown(); health_server.server_close(); health_thread.join(timeout=2)
-    state="UNKNOWN/STALE" if 31.0>30 else "HEALTHY"
-    record("Q10DH-08 stale health signal","UNKNOWN/STALE",state,state=="UNKNOWN/STALE")
+    def classify_health(last_success, now_utc, max_age_seconds=30):
+        if last_success is None: return "UNKNOWN"
+        age=(now_utc-last_success).total_seconds()
+        if age<0: return "UNKNOWN"
+        return "STALE" if age>max_age_seconds else "HEALTHY"
     now=datetime.datetime.now(datetime.timezone.utc)
+    stale_time=now-datetime.timedelta(seconds=31)
+    stale_state=classify_health(stale_time,now)
+    record("Q10DH-08 timestamp-based stale health signal","STALE",stale_state,stale_state=="STALE")
+    fresh_state=classify_health(now-datetime.timedelta(seconds=5),now)
+    record("Q10DH-09 fresh timestamp health signal","HEALTHY",fresh_state,fresh_state=="HEALTHY")
+    boundary_state=classify_health(now-datetime.timedelta(seconds=30),now)
+    record("Q10DH-10 health freshness boundary inclusive","HEALTHY",boundary_state,boundary_state=="HEALTHY")
+    future_state=classify_health(now+datetime.timedelta(seconds=1),now)
+    record("Q10DH-11 future health timestamp rejected","UNKNOWN",future_state,future_state=="UNKNOWN")
     out=os.path.join(os.environ.get("RUNNER_TEMP","/tmp"),"phase-a-stage10d-hardening-evidence.json")
     payload={"stage":"10D-Hardening","generated_at":now.isoformat(),"tests":RESULTS,
              "passed":sum(x["passed"] for x in RESULTS),"failed":sum(not x["passed"] for x in RESULTS),

@@ -671,3 +671,72 @@ def test_stale_registry_peer_keeps_previous_ip_for_firewall_revocation(tmp_path)
     assert "10.0.0.2" in wg.revoked_ips
     assert store.disabled(PUB)
     store.close()
+
+def test_concurrent_revoke_then_reauthorize_keeps_guard_until_peer_install(tmp_path):
+    import threading
+
+    store = MeteringStore(str(tmp_path / "race-state.sqlite3"))
+    wg = FakeWG()
+    revoke_payload = {"interface":"wg0","peers":[],"remove_peers":[{
+        "client_id":7,"public_key":PUB,"allowed_ips":"10.0.0.2/32","state":"revoked"
+    }]}
+    authorize_payload = {"interface":"wg0","peers":[{
+        "client_id":7,"public_key":PUB,"allowed_ips":"10.0.0.2/32","state":"peer_registered"
+    }],"remove_peers":[]}
+    first_fetch_entered = threading.Event()
+    release_first_fetch = threading.Event()
+    second_call_started = threading.Event()
+    fetch_count = 0
+    fetch_lock = threading.Lock()
+
+    def fetch_registry(*_):
+        nonlocal fetch_count
+        with fetch_lock:
+            fetch_count += 1
+            current = fetch_count
+        if current == 1:
+            first_fetch_entered.set()
+            assert release_first_fetch.wait(timeout=2)
+            return revoke_payload
+        return authorize_payload
+
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg, post=lambda *_: 200,
+        registry_fetcher=fetch_registry,
+    )
+    errors = []
+
+    def run_sync():
+        try:
+            meter.sync_registry()
+        except Exception as exc:
+            errors.append(exc)
+
+    first = threading.Thread(target=run_sync)
+    second = threading.Thread(target=lambda: (second_call_started.set(), run_sync()))
+    first.start()
+    assert first_fetch_entered.wait(timeout=2)
+    second.start()
+    assert second_call_started.wait(timeout=2)
+    release_first_fetch.set()
+    first.join(timeout=3)
+    second.join(timeout=3)
+
+    assert not first.is_alive() and not second.is_alive()
+    assert not errors
+    assert fetch_count == 2
+    assert "10.0.0.2" not in wg.revoked_ips
+    assert store.revoked_sources() == []
+    # The source guard is removed only after WireGuard has been configured
+    # for the re-authorized peer; the serialized syncs cannot interleave.
+    install_index = next(
+        i for i, call in enumerate(wg.calls)
+        if call[:4] == ["wg", "set", "wg0", "peer"] and "allowed-ips" in call
+    )
+    unlock_index = next(
+        i for i, call in enumerate(wg.calls)
+        if call[:3] == ["nft", "delete", "element"]
+    )
+    assert install_index < unlock_index
+    store.close()

@@ -1,7 +1,7 @@
 [Unit]
 Description=R&MA trusted WireGuard traffic metering and quota enforcement
-Wants=network-online.target
-After=network-online.target wg-quick@wg0.service
+Wants=network-online.target nftables.service
+After=network-online.target nftables.service wg-quick@wg0.service
 
 [Service]
 Type=simple

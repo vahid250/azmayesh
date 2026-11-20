@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -356,6 +357,8 @@ class WireGuardMeter:
             self._https_registry_fetch if not peers else None
         )
         self.max_outage_seconds = max_outage_seconds
+        # Serialize all registry reconciliation and peer state transitions in-process.
+        self._sync_lock = threading.RLock()
 
     @staticmethod
     def _signed_headers(secret, path, body, event_id=None):
@@ -588,6 +591,10 @@ class WireGuardMeter:
     def sync_registry(self):
         if self.registry_fetcher is None:
             return self.peers
+        with self._sync_lock:
+            return self._sync_registry_locked()
+
+    def _sync_registry_locked(self):
         active, removals = self._fetch_registry()
         # Restore durable revocations before any authorized peer can be
         # reconciled or re-enabled. If the firewall contract is broken, still

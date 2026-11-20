@@ -18,9 +18,10 @@ up(){
    ip netns add "$ns"; ip -n "$ns" link set lo up
    ip link add "z${i}c" type veth peer name "z${i}r"
    ip link set "z${i}c" netns "$ns"; ip link set "z${i}r" netns "$ROUTER"
-   ip -n "$ns" addr add "$net.2/30" dev "z${i}c"; ip -n "$ns" link set "z${i}c" up
+   ip -n "$ns" addr add "$net.2/30" dev "z${i}c"; ip -n "$ns" -6 addr add "fd10:10:${i}::2/64" dev "z${i}c"; ip -n "$ns" link set "z${i}c" up
    ip -n "$ns" route add default via "$net.1"
-   ip -n "$ROUTER" addr add "$net.1/30" dev "z${i}r"; ip -n "$ROUTER" link set "z${i}r" up
+   ip -n "$ns" -6 route add default via "fd10:10:${i}::1" dev "z${i}c"
+   ip -n "$ROUTER" addr add "$net.1/30" dev "z${i}r"; ip -n "$ROUTER" -6 addr add "fd10:10:${i}::1/64" dev "z${i}r"; ip -n "$ROUTER" link set "z${i}r" up
  done
  # Isolated egress transit: packets reach a disposable external namespace, never host/global network.
  ip netns add "$EGRESS"; ip -n "$EGRESS" link set lo up
@@ -31,6 +32,8 @@ up(){
  ip -n "$ROUTER" route add default via 198.18.0.2
  ip -n "$EGRESS" route add 10.20.0.0/16 via 198.18.0.1
  ip netns exec "$ROUTER" sysctl -q -w net.ipv4.ip_forward=1
+ ip netns exec "$ROUTER" sysctl -q -w net.ipv6.conf.all.forwarding=1
+ for ns in "$ROUTER" "${zones[@]/#/rma10d-}"; do ip netns exec "$ns" sysctl -q -w net.ipv6.conf.all.disable_ipv6=0; ip netns exec "$ns" sysctl -q -w net.ipv6.conf.default.disable_ipv6=0; done
  ip netns exec "$ROUTER" nft -f - <<'NFT'
 table inet rma10d {
  chain forward {

@@ -487,7 +487,7 @@ def test_revocation_blocks_peer_source_before_wireguard_removal_and_ack(tmp_path
     store.close()
 
 
-def test_revocation_firewall_failure_does_not_remove_peer_or_ack(tmp_path):
+def test_revocation_firewall_failure_falls_back_to_wireguard_removal_without_ack(tmp_path):
     store = MeteringStore(str(tmp_path / "state.sqlite3"))
     wg = FakeWG(10, 5)
     wg.fail_nft_add = True
@@ -502,9 +502,10 @@ def test_revocation_firewall_failure_does_not_remove_peer_or_ack(tmp_path):
         registry_fetcher=lambda *_: registry,
     )
     meter.sync_registry()
-    assert not any(c[1:3] == ["set","wg0"] and "remove" in c for c in wg.calls)
+    assert any(c[1:3] == ["set","wg0"] and "remove" in c for c in wg.calls)
     assert not acks
-    assert not store.disabled(PUB)
+    assert store.disabled(PUB)
+    assert "10.0.0.2" not in wg.revoked_ips
     store.close()
 
 

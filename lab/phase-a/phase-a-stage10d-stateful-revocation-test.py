@@ -39,11 +39,7 @@ def counter():
 def find_allow_handle():
     for line in chain().splitlines():
         if (f"ip saddr {SRC}" in line and f"ip daddr {DST}" in line
-            and f"tcp dport {PORT}" in line and "ct state new" in line
-            and line.rstrip().endswith("accept") or
-            (f"ip saddr {SRC}" in line and f"ip daddr {DST}" in line
-             and f"tcp dport {PORT}" in line and "ct state new" in line
-             and "accept # handle" in line)):
+            and f"tcp dport {PORT}" in line and "ct state new" in line and " accept" in line)):
             m=re.search(r"# handle (\d+)",line)
             if m: return int(m.group(1))
     return None
@@ -125,7 +121,7 @@ s.close()
             "counter","drop","comment","stage10d-revoke-test"])
         lines=chain().splitlines()
         revoke_index=next((i for i,l in enumerate(lines) if 'comment "stage10d-revoke-test"' in l),None)
-        established_index=next((i for i,l in enumerate(lines) if "ct state established,related" in l and l.rstrip().endswith("accept")),None)
+        established_index=next((i for i,l in enumerate(lines) if "ct state established,related" in l and " accept" in l),None)
         ordered=revoke_index is not None and established_index is not None and revoke_index<established_index
         record("Q10DS-04 revocation guard precedes established-state accept",
                "revocation rule index < established accept",
@@ -134,6 +130,9 @@ s.close()
         before=counter()
         client.stdin.write("after-revoke\n"); client.stdin.flush()
         old_result=client.stdout.readline().strip()
+        if old_result == "" and client.poll() is not None:
+            err=client.stderr.read().strip()
+            old_result=f"CLIENT_EXIT_{client.returncode}; stderr={err}"
         after=counter()
         old_delta=None if before is None or after is None else after-before
         record("Q10DS-05 pre-existing TCP session is blocked after revocation",

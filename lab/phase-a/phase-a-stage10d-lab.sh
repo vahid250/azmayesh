@@ -67,6 +67,16 @@ table inet rma10d {
   ip saddr 10.20.4.2 ip daddr 10.20.7.2 tcp dport 5432 counter drop
   ip saddr 10.20.9.2 ip daddr 10.20.2.2 tcp dport 8080 counter drop
   ip saddr 10.20.10.2 ip daddr 10.20.3.2 tcp dport 8443 counter drop
+  # Additional negative-route audit cases; counters prove the matching drop rule.
+  ip saddr 10.20.1.2 ip daddr 10.20.7.2 tcp dport 5432 counter drop
+  ip saddr 10.20.1.2 ip daddr 10.20.3.2 tcp dport 9443 counter drop
+  ip saddr 10.20.2.2 ip daddr 10.20.3.2 tcp dport 9444 counter drop
+  ip saddr 10.20.2.2 ip daddr 10.20.6.2 tcp dport 9445 counter drop
+  ip saddr 10.20.5.2 ip daddr 10.20.3.2 tcp dport 9200 counter drop
+  ip saddr 10.20.4.2 ip daddr 10.20.2.2 tcp dport 8080 counter drop
+  ip saddr 10.20.4.2 ip daddr 10.20.3.2 tcp dport 8443 counter drop
+  ip saddr 10.20.4.2 ip daddr 10.20.6.2 tcp dport 9445 counter drop
+  ip saddr 10.20.4.2 ip daddr 10.20.8.2 tcp dport 9000 counter drop
   # Monitoring -> read-only health endpoints only
   ip saddr 10.20.5.2 ip daddr 10.20.2.2 tcp dport 9100 ct state new counter accept
   ip saddr 10.20.5.2 ip daddr 10.20.3.2 tcp dport 9100 ct state new counter accept

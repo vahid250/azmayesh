@@ -166,6 +166,8 @@ class MeteringStore:
           CREATE TABLE IF NOT EXISTS agent_state(key TEXT PRIMARY KEY, value REAL NOT NULL);
           CREATE TABLE IF NOT EXISTS managed_peers(
             public_key TEXT PRIMARY KEY, client_id INTEGER NOT NULL, allowed_ips TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS revoked_peer_sources(
+            address TEXT PRIMARY KEY, recorded_at REAL NOT NULL);
         """)
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(pending_events)")}
         if "created_at" not in columns:
@@ -287,6 +289,33 @@ class MeteringStore:
         ).fetchone()
         return Peer(row[0], key, row[1]) if row else None
 
+    def remember_revoked_source(self, allowed_ips):
+        interface = _validate_peer_allowed_ips(allowed_ips)
+        address = str(ipaddress.ip_interface(interface).ip)
+        with self.db:
+            self.db.execute(
+                "INSERT OR IGNORE INTO revoked_peer_sources(address,recorded_at) VALUES(?,?)",
+                (address, time.time()),
+            )
+
+    def forget_revoked_source(self, allowed_ips):
+        interface = _validate_peer_allowed_ips(allowed_ips)
+        address = str(ipaddress.ip_interface(interface).ip)
+        with self.db:
+            self.db.execute("DELETE FROM revoked_peer_sources WHERE address=?", (address,))
+
+    def revoked_sources(self):
+        return [row[0] for row in self.db.execute(
+            "SELECT address FROM revoked_peer_sources ORDER BY address"
+        ).fetchall()]
+
+    def has_revoked_source(self, allowed_ips):
+        interface = _validate_peer_allowed_ips(allowed_ips)
+        address = str(ipaddress.ip_interface(interface).ip)
+        return self.db.execute(
+            "SELECT 1 FROM revoked_peer_sources WHERE address=?", (address,)
+        ).fetchone() is not None
+
     def note_failure(self, name: str, now: float) -> float:
         key = f"{name}_fail_since"
         with self.db:
@@ -402,6 +431,9 @@ class WireGuardMeter:
         self._verify_revocation_guards()
         interface = _validate_peer_allowed_ips(allowed_ips)
         address = str(ipaddress.ip_interface(interface).ip)
+        # Persist intent before touching the volatile nftables set. A crash or
+        # firewall reload can therefore be repaired on the next agent start.
+        self.store.remember_revoked_source(interface)
         if self._nft_element_present(address):
             return
         try:
@@ -414,16 +446,33 @@ class WireGuardMeter:
             if not self._nft_element_present(address):
                 raise
 
+    def restore_revoked_sources(self):
+        """Rehydrate the volatile firewall set from the durable local revocation ledger."""
+        self._verify_revocation_guards()
+        for address in self.store.revoked_sources():
+            if self._nft_element_present(address):
+                continue
+            try:
+                self.command(
+                    ["nft", "add", "element", "inet", "rma_guard", "revoked_peer_sources", "{", address, "}"],
+                    check=True, capture_output=True, text=True, timeout=8,
+                )
+            except subprocess.CalledProcessError:
+                # Treat an already-present element as success; propagate all
+                # other failures so reconciliation remains fail-closed.
+                if not self._nft_element_present(address):
+                    raise
+
     def _unrevoke_peer_source(self, allowed_ips):
         self._verify_revocation_guards()
         interface = _validate_peer_allowed_ips(allowed_ips)
         address = str(ipaddress.ip_interface(interface).ip)
-        if not self._nft_element_present(address):
-            return
-        self.command(
-            ["nft", "delete", "element", "inet", "rma_guard", "revoked_peer_sources", "{", address, "}"],
-            check=True, capture_output=True, text=True, timeout=8,
-        )
+        if self._nft_element_present(address):
+            self.command(
+                ["nft", "delete", "element", "inet", "rma_guard", "revoked_peer_sources", "{", address, "}"],
+                check=True, capture_output=True, text=True, timeout=8,
+            )
+        self.store.forget_revoked_source(interface)
 
     def _remove_peer(self, key, peer=None, *, require_firewall=False):
         peer = peer or self.store.managed_peer(key) or self.peers.get(key)
@@ -539,6 +588,9 @@ class WireGuardMeter:
     def sync_registry(self):
         if self.registry_fetcher is None:
             return self.peers
+        # Check the guard contract and restore durable revocations before any
+        # authorized peer can be reconciled or re-enabled.
+        self.restore_revoked_sources()
         active, removals = self._fetch_registry()
         previously_managed = self.store.current_peers()
         stale_keys = self.store.replace_registry(active)
@@ -562,7 +614,14 @@ class WireGuardMeter:
                 LOG.critical("managed peer removal/ack failed for client %s (%s)", peer.client_id, type(exc).__name__)
         for key, peer in active.items():
             # Never re-enable a peer while an older usage interval is unacknowledged.
-            if self._flush_pending(peer):
+            if not self._flush_pending(peer):
+                continue
+            # An IP may have been revoked before a crash and subsequently
+            # authorized again. Install/update the WG peer first, then remove
+            # its persistent source guard in the same safe order.
+            if self.store.has_revoked_source(peer.allowed_ips):
+                self._register_peer(peer)
+            else:
                 self.store.enable(key)
         self.peers = active
         return active

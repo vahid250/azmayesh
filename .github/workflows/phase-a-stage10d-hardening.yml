@@ -7,6 +7,7 @@ on:
       - security/phase-10d-hardening
     paths:
       - "lab/phase-a/phase-a-stage10d-hardening-test.py"
+      - "lab/phase-a/phase-a-stage10d-route-matrix-test.py"
       - ".github/workflows/phase-a-stage10d-hardening.yml"
   pull_request:
     paths:
@@ -40,6 +41,8 @@ jobs:
           trap cleanup EXIT
           sudo bash lab/phase-a/phase-a-stage10d-lab.sh up
           sudo -E python3 lab/phase-a/phase-a-stage10d-hardening-test.py 2>&1 | tee "$LOG"
+          MATRIX_LOG="$RUNNER_TEMP/phase-a-stage10d-route-matrix.log"
+          sudo -E python3 lab/phase-a/phase-a-stage10d-route-matrix-test.py 2>&1 | tee "$MATRIX_LOG"
       - name: Upload complete Stage 10D-Hardening evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -48,5 +51,7 @@ jobs:
           path: |
             ${{ runner.temp }}/phase-a-stage10d-hardening.log
             ${{ runner.temp }}/phase-a-stage10d-hardening-evidence.json
+            ${{ runner.temp }}/phase-a-stage10d-route-matrix.log
+            ${{ runner.temp }}/phase-a-stage10d-route-matrix-evidence.json
           if-no-files-found: warn
           retention-days: 14

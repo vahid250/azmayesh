@@ -31,7 +31,7 @@ def chain():
 
 def counter():
     for line in chain().splitlines():
-        if 'comment "stage10d-revocation-set"' in line:
+        if 'comment "stage10d-peer-source-revocation"' in line:
             m=re.search(r"counter packets (\d+) bytes (\d+)",line)
             if m: return int(m.group(1))
     return None
@@ -129,16 +129,16 @@ s.close()
         run(ROUTER+["nft","delete","rule","inet","rma10d","forward","handle",str(allow_handle)])
         record("Q10DS-03 revoke removes exact NEW-flow allow rule","rule deleted",f"handle {allow_handle}",True)
 
-        # Revoke the exact TCP flow through the pre-installed dynamic nftables set.
-        # The set guard is part of the baseline policy and precedes established-state accept.
-        run(ROUTER+["nft","add","element","inet","rma10d","revoked_tcp_flows",
-            "{",SRC,".",DST,".",str(PORT),"}"])
+        # Revoke the peer's entire source address, not only one TCP destination/port.
+        # The source guard is pre-installed before established-state acceptance.
+        run(ROUTER+["nft","add","element","inet","rma10d","revoked_peer_sources",
+            "{",SRC,"}"])
         lines=chain().splitlines()
-        revoke_index=next((i for i,l in enumerate(lines) if 'comment "stage10d-revocation-set"' in l),None)
+        revoke_index=next((i for i,l in enumerate(lines) if 'comment "stage10d-peer-source-revocation"' in l),None)
         established_index=next((i for i,l in enumerate(lines) if "ct state established,related" in l and " accept" in l),None)
         ordered=revoke_index is not None and established_index is not None and revoke_index<established_index
         record("Q10DS-04 revocation guard precedes established-state accept",
-               "revocation rule index < established accept",
+               "source revocation rule index < established accept",
                f"{revoke_index} < {established_index}",ordered)
 
         before=counter()
@@ -154,7 +154,7 @@ s.close()
         after=counter()
         old_delta=None if before is None or after is None else after-before
         record("Q10DS-05 pre-existing TCP session is blocked after revocation",
-               "TIMEOUT and revocation drop counter increases",
+               "TIMEOUT and peer-source drop counter increases",
                f"{old_result}; counter delta={old_delta}",
                old_result=="TIMEOUT" and old_delta is not None and old_delta>0)
 
@@ -174,7 +174,7 @@ except OSError:
         after=counter()
         new_delta=None if before is None or after is None else after-before
         record("Q10DS-06 new TCP session is denied after revocation",
-               "connection denied and revocation drop counter increases",
+               "connection denied and peer-source drop counter increases",
                f"{'DENIED' if new.returncode==0 else 'CONNECTED/UNEXPECTED'}; counter delta={new_delta}",
                new.returncode==0 and new_delta is not None and new_delta>0)
 

@@ -28,9 +28,19 @@ class FakeWG:
         self.hide_peer = False
         self.revoked_ips = set()
         self.fail_nft_add = False
+        self.fail_guard = False
 
     def __call__(self, args, **kwargs):
         self.calls.append(args)
+        if args[:4] == ["nft", "-a", "list", "chain"]:
+            if self.fail_guard:
+                return subprocess.CompletedProcess(args, 1, "", "missing guard")
+            hook = args[-1]
+            output = (
+                f'chain {hook} {{ type filter hook {hook} priority -10; policy accept; '
+                'iifname "wg0" ip saddr @revoked_peer_sources counter drop }'
+            )
+            return subprocess.CompletedProcess(args, 0, output, "")
         if args[:3] == ["nft", "get", "element"]:
             return subprocess.CompletedProcess(args, 0 if args[-2] in self.revoked_ips else 1, "", "")
         if args[:3] == ["nft", "add", "element"]:
@@ -512,4 +522,24 @@ def test_reauthorization_removes_source_guard_only_after_wireguard_update(tmp_pa
     delete_index = next(i for i,c in enumerate(wg.calls) if c[:3] == ["nft","delete","element"])
     assert set_index < delete_index
     assert "10.0.0.2" not in wg.revoked_ips
+    store.close()
+
+
+def test_revocation_guard_must_be_present_before_any_peer_removal_or_ack(tmp_path):
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    wg = FakeWG(10, 5)
+    wg.fail_guard = True
+    acks = []
+    registry = {"interface":"wg0","peers":[],"remove_peers":[{
+        "client_id":7,"public_key":PUB,"allowed_ips":"10.0.0.2/32","state":"revoked"
+    }]}
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg,
+        post=lambda *args: acks.append(args) or 200,
+        registry_fetcher=lambda *_: registry,
+    )
+    meter.sync_registry()
+    assert not any(c[1:3] == ["set","wg0"] and "remove" in c for c in wg.calls)
+    assert not acks
     store.close()

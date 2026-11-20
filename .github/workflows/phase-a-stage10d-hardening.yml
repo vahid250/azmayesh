@@ -9,6 +9,7 @@ on:
     paths:
       - "lab/phase-a/phase-a-stage10d-hardening-test.py"
       - "lab/phase-a/phase-a-stage10d-route-matrix-test.py"
+      - "lab/phase-a/phase-a-stage10d-lab.sh"
       - ".github/workflows/phase-a-stage10d-hardening.yml"
   pull_request:
     paths:

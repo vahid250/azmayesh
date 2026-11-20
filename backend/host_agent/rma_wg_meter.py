@@ -363,7 +363,48 @@ class WireGuardMeter:
     def sample(self):
         return parse_wg_dump(self._wg("show", self.interface, "dump").stdout)
 
-    def _remove_peer(self, key):
+    def _nft_element_present(self, address):
+        address = str(ipaddress.ip_address(address))
+        if ipaddress.ip_address(address).version != 4:
+            raise ValueError("revocation firewall supports IPv4 peer addresses only")
+        result = self.command(
+            ["nft", "get", "element", "inet", "rma_guard", "revoked_peer_sources", "{", address, "}"],
+            check=False, capture_output=True, text=True, timeout=8,
+        )
+        return result.returncode == 0
+
+    def _revoke_peer_source(self, allowed_ips):
+        interface = _validate_peer_allowed_ips(allowed_ips)
+        address = str(interface.ip)
+        if self._nft_element_present(address):
+            return
+        try:
+            self.command(
+                ["nft", "add", "element", "inet", "rma_guard", "revoked_peer_sources", "{", address, "}"],
+                check=True, capture_output=True, text=True, timeout=8,
+            )
+        except subprocess.CalledProcessError:
+            # A concurrent reconciler may have inserted the same element.
+            if not self._nft_element_present(address):
+                raise
+
+    def _unrevoke_peer_source(self, allowed_ips):
+        interface = _validate_peer_allowed_ips(allowed_ips)
+        address = str(interface.ip)
+        if not self._nft_element_present(address):
+            return
+        self.command(
+            ["nft", "delete", "element", "inet", "rma_guard", "revoked_peer_sources", "{", address, "}"],
+            check=True, capture_output=True, text=True, timeout=8,
+        )
+
+    def _remove_peer(self, key, peer=None, *, require_firewall=False):
+        peer = peer or self.store.managed_peer(key) or self.peers.get(key)
+        if peer is not None and peer.allowed_ips:
+            # Block all traffic from this peer before removing its WireGuard key.
+            self._revoke_peer_source(peer.allowed_ips)
+        elif require_firewall:
+            raise ValueError("revocation requires a validated peer IPv4 /32 address")
         self._wg("set", self.interface, "peer", key, "remove")
         self.store.mark_disabled(key)
         self.store.unmanage(key)
@@ -372,7 +413,9 @@ class WireGuardMeter:
     def _register_peer(self, peer):
         key = _validate_wireguard_public_key(peer.public_key)
         allowed_ips = _validate_peer_allowed_ips(peer.allowed_ips)
+        # Install WireGuard first; keep the source guard until registration succeeds.
         self._wg("set", self.interface, "peer", key, "allowed-ips", allowed_ips)
+        self._unrevoke_peer_source(allowed_ips)
         self.store.enable(peer.public_key)
         LOG.info("managed peer reconciled: client_id=%s", peer.client_id)
 
@@ -407,13 +450,18 @@ class WireGuardMeter:
         for item in removals:
             if not isinstance(item, dict):
                 raise ValueError("trusted removal registry contains an invalid peer")
-            client_id, key, state = item.get("client_id"), item.get("public_key"), item.get("state")
+            client_id, key = item.get("client_id"), item.get("public_key")
+            allowed_ips, state = item.get("allowed_ips"), item.get("state")
             if type(client_id) is not int or client_id <= 0:
                 raise ValueError("trusted removal registry peer identity is invalid")
             key = _validate_wireguard_public_key(key)
+            allowed_ips = _validate_peer_allowed_ips(allowed_ips)
             if state not in ("revoked", "suspended") or key in remove_peers or key in peers:
                 raise ValueError("trusted removal registry peer state is invalid")
-            remove_peers[key] = Peer(client_id, key, "", state)
+            if allowed_ips in assigned_ips:
+                raise ValueError("trusted registry contains duplicate peer IP addresses")
+            assigned_ips.add(allowed_ips)
+            remove_peers[key] = Peer(client_id, key, allowed_ips, state)
         return peers, remove_peers
 
     def _ack_peer_status(self, peer, state):
@@ -465,8 +513,10 @@ class WireGuardMeter:
             try:
                 self._flush_pending(peer)
                 if not self.store.disabled(key):
-                    self._remove_peer(key)
+                    self._remove_peer(key, peer, require_firewall=True)
                 else:
+                    # Reassert the source guard on every reconciliation before ACK.
+                    self._revoke_peer_source(peer.allowed_ips)
                     self.store.unmanage(key)
                 self._ack_peer_status(peer, peer.state)
             except Exception as exc:

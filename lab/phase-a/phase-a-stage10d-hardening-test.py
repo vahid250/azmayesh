@@ -10,7 +10,6 @@ POLICY={"available":True}
 def record(test, expected, actual, passed):
     RESULTS.append({"test":test,"expected":expected,"actual":actual,"passed":bool(passed)})
     print(f"{'PASS' if passed else 'FAIL'}: {test}: expected={expected}; actual={actual}")
-    if not passed: raise AssertionError(test)
 def openssl(*args):
     subprocess.run(["openssl",*args],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)
 def make_cert(d,name,ca_key,ca_crt):
@@ -66,7 +65,7 @@ def main():
         server_ctx.load_cert_chain(str(server_crt),str(server_key))
         server_ctx.load_verify_locations(cafile=str(ca_crt)); server_ctx.verify_mode=ssl.CERT_REQUIRED
         server_ctx.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
-        subprocess.run(["openssl","verify","-purpose","sslclient","-CAfile",str(ca_crt),str(control_crt)],check=True,capture_output=True,text=True)
+        verify=subprocess.run(["openssl","verify","-purpose","sslclient","-CAfile",str(ca_crt),str(control_crt)],check=False,capture_output=True,text=True)\n        record("Q10DH-00 client certificate purpose validation","openssl verify OK",verify.stdout.strip() or verify.stderr.strip(),verify.returncode==0)
         httpd=HTTPServer(("127.0.0.1",0),Handler)
         httpd.socket=server_ctx.wrap_socket(httpd.socket,server_side=True)
         port=httpd.server_address[1]

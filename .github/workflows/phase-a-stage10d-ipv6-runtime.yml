@@ -1,0 +1,58 @@
+name: Phase A Stage 10D IPv6 Runtime Deny
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - security/phase-10d-remediation
+      - security/phase-10d-hardening
+    paths:
+      - "lab/phase-a/phase-a-stage10d-ipv6-runtime-test.py"
+      - "lab/phase-a/phase-a-stage10d-lab.sh"
+      - ".github/workflows/phase-a-stage10d-ipv6-runtime.yml"
+  pull_request:
+    paths:
+      - "lab/phase-a/phase-a-stage10d-ipv6-runtime-test.py"
+      - "lab/phase-a/phase-a-stage10d-lab.sh"
+      - ".github/workflows/phase-a-stage10d-ipv6-runtime.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stage10d-ipv6-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipv6-runtime:
+    name: Actual IPv6 forwarded probes and drop counters
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install network lab tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y iproute2 nftables
+          python3 --version
+      - name: Run isolated Stage 10D lab and IPv6 probes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          LOG="$RUNNER_TEMP/phase-a-stage10d-ipv6-runtime.log"
+          cleanup() { sudo bash lab/phase-a/phase-a-stage10d-lab.sh down || true; }
+          trap cleanup EXIT
+          sudo bash lab/phase-a/phase-a-stage10d-lab.sh up
+          sudo -E python3 lab/phase-a/phase-a-stage10d-ipv6-runtime-test.py 2>&1 | tee "$LOG"
+      - name: Upload IPv6 runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-a-stage10d-ipv6-runtime-evidence
+          path: |
+            ${{ runner.temp }}/phase-a-stage10d-ipv6-runtime.log
+            ${{ runner.temp }}/phase-a-stage10d-ipv6-runtime-evidence.json
+          if-no-files-found: warn
+          retention-days: 14

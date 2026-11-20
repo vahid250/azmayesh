@@ -56,3 +56,6 @@ Required host firewall contract (operator-provisioned; the agent does not create
 - An early `forward` drop rule for `iifname "wg0" ip saddr @revoked_peer_sources`
 
 Replace `wg0` with the exact configured interface. These rules must execute before any `ct state established,related accept`. The set is restored by the host firewall configuration at boot; the agent reasserts revoked entries from the signed registry on each successful reconciliation. No firewall rules are installed automatically by the agent.
+
+
+The agent validates both pre-provisioned chains on every add/remove operation: each must contain the configured WireGuard ingress guard and have a base-chain hook priority of `-10` or earlier. Missing, late, or malformed guards prevent revocation ACK and prevent re-authorization from removing the block.

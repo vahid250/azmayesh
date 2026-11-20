@@ -101,7 +101,7 @@ def main():
             port=19400+ZONES[dst]
             alias=v6(src,99)
             iface=f"z{ZONES[src]}c"
-            setup=cmd(["ip","-n",f"rma10d-{src}","-6","addr","add",alias+"/64","dev",iface])
+            setup=cmd(["ip","-n",f"rma10d-{src}","-6","addr","add",alias+"/64","dev",iface,"nodad"])
             if setup.returncode:
                 RESULTS.append({"test":f"IPv6 spoof {src}->{dst}","expected":"deny","actual":"UNKNOWN","outcome":"INCONCLUSIVE","passed":False,"reason":setup.stderr})
                 print(f"INCONCLUSIVE: IPv6 spoof alias setup failed for {src}: {setup.stderr.strip()}")

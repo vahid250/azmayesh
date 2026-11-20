@@ -28,13 +28,10 @@ class HealthHandler(BaseHTTPRequestHandler):
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         cert=self.connection.getpeercert()
-        cn=""
-        for group in cert.get("subject",()):
-            for key,value in group:
-                if key=="commonName": cn=value
+        uris=[value for typ,value in cert.get("subjectAltName",()) if typ=="URI"]
         if self.path!="/mutate":
             self.send_response(404); self.end_headers(); return
-        if cn!="rma-control":
+        if "spiffe://rma/control" not in uris:
             self.send_response(403); self.end_headers(); return
         if not POLICY["available"]:
             self.send_response(503); self.end_headers(); return
@@ -84,29 +81,29 @@ def main():
             user=context(ca_crt,user_crt,user_key); status=request(port,user)
             record("Q10DH-02 trusted but wrong workload identity","HTTP 403",f"HTTP {status}",status==403)
             POLICY["available"]=False; status=request(port,valid)
-            record("Q10DH-03 policy dependency unavailable","HTTP 503 fail closed",f"HTTP {status}",status==503)
+            record("Q10DH-04 policy dependency unavailable","HTTP 503 fail closed",f"HTTP {status}",status==503)
             POLICY["available"]=True
-            untrusted=context(rogue_ca_crt,rogue_crt,rogue_key); rejected=False
+            untrusted=context(ca_crt,rogue_crt,rogue_key); rejected=False
             try: request(port,untrusted)
             except (ssl.SSLError,OSError,http.client.HTTPException): rejected=True
-            record("Q10DH-04 untrusted certificate authority","TLS handshake rejected","rejected" if rejected else "connected",rejected)
+            record("Q10DH-05 rogue client CA rejected with trusted server CA","TLS handshake rejected","rejected" if rejected else "connected",rejected)
         finally:
             httpd.shutdown(); httpd.server_close(); thread.join(timeout=2)
     for zone in ZONES:
         probe="import socket,sys; s=socket.socket(); s.settimeout(1.5)\ntry: s.connect(('1.1.1.1',443)); sys.exit(0)\nexcept OSError: sys.exit(1)\n"
         p=subprocess.run(["ip","netns","exec","rma10d-"+zone,"python3","-c",probe],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False)
         denied=p.returncode!=0
-        record(f"Q10DH-05 public egress denied from {zone}","DENY","DENY" if denied else "ALLOW",denied)
+        record(f"Q10DH-06 public egress denied from {zone}","DENY","DENY" if denied else "ALLOW",denied)
     health_server=HTTPServer(("127.0.0.1",0),HealthHandler)
     health_thread=threading.Thread(target=health_server.serve_forever,daemon=True); health_thread.start()
     try:
         conn=http.client.HTTPConnection("127.0.0.1",health_server.server_address[1],timeout=2)
         conn.request("GET","/health"); response=conn.getresponse(); body=response.read(); live_ok=response.status==200 and body==b"healthy"; conn.close()
-        record("Q10DH-06 live fresh health HTTP probe","HTTP 200 healthy",f"HTTP {response.status} {body.decode(errors='replace')}",live_ok)
+        record("Q10DH-07 live fresh health HTTP probe","HTTP 200 healthy",f"HTTP {response.status} {body.decode(errors='replace')}",live_ok)
     finally:
         health_server.shutdown(); health_server.server_close(); health_thread.join(timeout=2)
     state="UNKNOWN/STALE" if 31.0>30 else "HEALTHY"
-    record("Q10DH-07 stale health signal","UNKNOWN/STALE",state,state=="UNKNOWN/STALE")
+    record("Q10DH-08 stale health signal","UNKNOWN/STALE",state,state=="UNKNOWN/STALE")
     now=datetime.datetime.now(datetime.timezone.utc)
     out=os.path.join(os.environ.get("RUNNER_TEMP","/tmp"),"phase-a-stage10d-hardening-evidence.json")
     payload={"stage":"10D-Hardening","generated_at":now.isoformat(),"tests":RESULTS,

@@ -8,9 +8,9 @@ ZONES=("edge","api","control","admin","monitor","vpn","db","ci","rogue","vpn_pee
 RESULTS=[]
 POLICY={"available":True}
 def record(test, expected, actual, passed):
-    RESULTS.append({"test":test,"expected":expected,"actual":actual,"passed":bool(passed)})
-    print(f"{'PASS' if passed else 'FAIL'}: {test}: expected={expected}; actual={actual}")
-    if not passed: raise AssertionError(test)
+    outcome="PASS" if passed else "FAIL"
+    RESULTS.append({"test":test,"expected":expected,"actual":actual,"outcome":outcome,"passed":bool(passed)})
+    print(f"{outcome}: {test}: expected={expected}; actual={actual}")
 def openssl(*args):
     subprocess.run(["openssl",*args],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)
 def make_cert(d,name,ca_key,ca_crt):

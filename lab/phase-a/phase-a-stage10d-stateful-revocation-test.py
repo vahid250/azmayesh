@@ -85,25 +85,40 @@ s.close()
             time.sleep(.1)
         if not ready: raise RuntimeError("API listener did not become ready")
 
-        client_code="""import socket,time
+        result_path=os.path.join(TEMP,"phase-a-stage10d-stateful-client-result.txt")
+        try: os.unlink(result_path)
+        except FileNotFoundError: pass
+        client_code=f"""import socket,time
 s=socket.create_connection(('10.20.2.2',8080),timeout=2)
 s.settimeout(1.5)
 s.sendall(b'before-revoke\\n')
-print(s.recv(4096).decode(errors='replace'),flush=True)
+initial=s.recv(4096).decode(errors='replace')
+with open({result_path!r},'w',encoding='utf-8') as f:
+    f.write('INITIAL='+initial+'\\n')
+    f.flush()
 time.sleep(2.0)
 try:
     s.sendall(b'after-revoke\\n')
-    data=s.recv(4096)
-    print(data.decode(errors='replace'),flush=True)
+    data=s.recv(4096).decode(errors='replace')
+    outcome='ACK:'+data
 except socket.timeout:
-    print('TIMEOUT',flush=True)
+    outcome='TIMEOUT'
 except OSError as e:
-    print('ERROR:'+str(e),flush=True)
+    outcome='ERROR:'+str(e)
+with open({result_path!r},'a',encoding='utf-8') as f:
+    f.write('AFTER='+outcome+'\\n')
 s.close()
 """
         client=subprocess.Popen(["ip","netns","exec","rma10d-edge","python3","-u","-c",client_code],
-            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1)
-        initial=client.stdout.readline().strip()
+            stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)
+        initial=""
+        for _ in range(60):
+            if os.path.exists(result_path):
+                with open(result_path,encoding="utf-8") as f:
+                    initial=next((line.split("=",1)[1].strip() for line in f if line.startswith("INITIAL=")),"")
+                if initial: break
+            if client.poll() is not None: break
+            time.sleep(.05)
         record("Q10DS-01 allowed TCP session established","successful initial ACK",initial,
                initial=="ACK:before-revoke")
         record("Q10DS-02 existing TCP session carries data before revocation","ACK:before-revoke",initial,
@@ -128,12 +143,15 @@ s.close()
                f"{revoke_index} < {established_index}",ordered)
 
         before=counter()
-        old_result=client.stdout.readline().strip()
-        if old_result == "":
-            try: client.wait(timeout=2)
-            except subprocess.TimeoutExpired: pass
-            err=client.stderr.read().strip() if client.poll() is not None else "client still running without output"
-            old_result=f"CLIENT_EXIT_{client.returncode}; stderr={err}" if client.poll() is not None else err
+        try: client.wait(timeout=6)
+        except subprocess.TimeoutExpired: client.kill(); client.wait(timeout=2)
+        old_result=""
+        if os.path.exists(result_path):
+            with open(result_path,encoding="utf-8") as f:
+                old_result=next((line.split("=",1)[1].strip() for line in f if line.startswith("AFTER=")),"")
+        if not old_result and client.stderr is not None:
+            err=client.stderr.read().strip()
+            old_result=f"NO_RESULT; stderr={err}"
         after=counter()
         old_delta=None if before is None or after is None else after-before
         record("Q10DS-05 pre-existing TCP session is blocked after revocation",

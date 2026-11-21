@@ -850,6 +850,42 @@ def test_crash_window_after_durable_ledger_before_nft_recovered_on_restart(tmp_p
     restarted_store.close()
 
 
+def test_ack_failure_keeps_revocation_guard_and_retries_after_restart(tmp_path):
+    db_path = str(tmp_path / "ack-retry.sqlite3")
+    registry = {"interface": "wg0", "peers": [], "remove_peers": [{
+        "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "revoked"
+    }]}
+    wg = FakeWG()
+    first_store = MeteringStore(db_path)
+    first_ack_calls = []
+    first_meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=first_store, command=wg,
+        post=lambda *args: first_ack_calls.append(args) or 503,
+        registry_fetcher=lambda *_: registry,
+    )
+    first_meter.sync_registry()
+    assert "10.0.0.2" in wg.revoked_ips
+    assert first_store.has_revoked_source("10.0.0.2/32")
+    assert first_store.disabled(PUB)
+    assert len(first_ack_calls) == 1
+    first_store.close()
+
+    restarted_store = MeteringStore(db_path)
+    successful_acks = []
+    restarted_meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=restarted_store, command=wg,
+        post=lambda *args: successful_acks.append(args) or 204,
+        registry_fetcher=lambda *_: registry,
+    )
+    restarted_meter.sync_registry()
+    assert "10.0.0.2" in wg.revoked_ips
+    assert restarted_store.has_revoked_source("10.0.0.2/32")
+    assert successful_acks and b'"state":"revoked"' in successful_acks[0][2]
+    restarted_store.close()
+
+
 def test_crash_after_firewall_guard_before_wireguard_remove_retries_without_ack(tmp_path):
     db_path = str(tmp_path / "guard-before-remove.sqlite3")
     registry = {"interface": "wg0", "peers": [], "remove_peers": [{

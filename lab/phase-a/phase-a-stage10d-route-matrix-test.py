@@ -40,11 +40,23 @@ def probe(src,dst,port):
  if isinstance(result,subprocess.TimeoutExpired): return None,"probe timed out"
  if result.returncode==0: return True,"connected and received OK"
  return False,(result.stderr or result.stdout or f"exit {result.returncode}").strip()[:300]
-def drop_packets():
+def nft_listing():
  r=run(["ip","netns","exec","rma10d-router","nft","-a","list","chain","inet","rma10d","forward"],timeout=3)
  if isinstance(r,subprocess.TimeoutExpired) or r.returncode!=0: return None
- matches=re.findall(r"counter packets (\d+) bytes (\d+)",r.stdout)
- return int(matches[-1][0]) if matches else None
+ return r.stdout
+def find_handle(listing,src_ip,dst_ip,port,action):
+ if listing is None: return None
+ pattern=rf"ip saddr {re.escape(src_ip)} ip daddr {re.escape(dst_ip)} tcp dport {port} counter {action}.*# handle (\d+)"
+ match=re.search(pattern,listing)
+ return int(match.group(1)) if match else None
+def rule_packets(handle):
+ listing=nft_listing()
+ if listing is None: return None
+ for line in listing.splitlines():
+  if re.search(rf"# handle {handle}\b",line):
+   m=re.search(r"counter packets (\d+) bytes (\d+)",line)
+   return int(m.group(1)) if m else None
+ return None
 def record(src,dst,port,expect,description,status,actual,detail):
  passed=status=="PASS"
  RESULTS.append({"test":f"{src}->{dst}:{port}","expected":"ALLOW" if expect else "DENY","actual":actual,"status":status,"passed":passed,"description":description,"detail":detail})
@@ -67,17 +79,45 @@ def main():
     if not ready:
      record(src,dst,port,expect,"destination preflight", "INCONCLUSIVE","UNKNOWN",readiness_detail)
      continue
-   before=drop_packets() if not expect else None
-   actual,detail=probe(src,dst,port)
    if expect:
+    actual,detail=probe(src,dst,port)
     status="PASS" if actual is True else "FAIL"
     record(src,dst,port,expect,desc,status,"ALLOW" if actual is True else "NO-CONNECTION",detail)
    else:
-    after=drop_packets()
+    src_ip=f"10.20.{ZONES[src]}.2"; dst_ip=f"10.20.{ZONES[dst]}.2"
+    # Positive control: install an exact temporary Allow and prove the source can
+    # reach the listener through the router before evaluating the denied path.
+    add_allow=run(["ip","netns","exec","rma10d-router","nft","insert","rule","inet","rma10d","forward",
+                    "ip","saddr",src_ip,"ip","daddr",dst_ip,"tcp","dport",str(port),"counter","accept"])
+    listing=nft_listing()
+    allow_handle=find_handle(listing,src_ip,dst_ip,port,"accept")
+    positive=False; positive_detail="temporary Allow setup failed"
+    if add_allow.returncode==0 and allow_handle is not None:
+     positive,positive_detail=probe(src,dst,port)
+    allow_removed=False
+    if allow_handle is not None:
+     rem=run(["ip","netns","exec","rma10d-router","nft","delete","rule","inet","rma10d","forward","handle",str(allow_handle)])
+     allow_removed=rem.returncode==0
+    # Exact temporary drop counter gives per-test packet attribution.
+    add_drop=run(["ip","netns","exec","rma10d-router","nft","insert","rule","inet","rma10d","forward",
+                   "ip","saddr",src_ip,"ip","daddr",dst_ip,"tcp","dport",str(port),"counter","drop"])
+    listing=nft_listing()
+    drop_handle=find_handle(listing,src_ip,dst_ip,port,"drop")
+    before=rule_packets(drop_handle) if drop_handle is not None else None
+    actual,detail=probe(src,dst,port)
+    after=rule_packets(drop_handle) if drop_handle is not None else None
     delta=(after-before) if before is not None and after is not None else None
-    status="PASS" if actual is False and delta is not None and delta>0 else ("FAIL" if actual is True else "INCONCLUSIVE")
+    drop_removed=False
+    if drop_handle is not None:
+     rem=run(["ip","netns","exec","rma10d-router","nft","delete","rule","inet","rma10d","forward","handle",str(drop_handle)])
+     drop_removed=rem.returncode==0
     actual_text="ALLOW" if actual is True else "DENY" if actual is False else "UNKNOWN"
-    record(src,dst,port,expect,desc,status,actual_text,f"{detail}; nft forward-drop counter delta={delta}")
+    if add_allow.returncode!=0 or allow_handle is None or not allow_removed or positive is not True or add_drop.returncode!=0 or drop_handle is None or not drop_removed:
+     status="INCONCLUSIVE"
+    else:
+     status="PASS" if actual is False and delta is not None and delta>0 else ("FAIL" if actual is True else "INCONCLUSIVE")
+    record(src,dst,port,expect,desc,status,actual_text,
+           f"positive_control={positive}; positive_detail={positive_detail}; allow_rule_removed={allow_removed}; deny_probe={detail}; exact_drop_counter_delta={delta}; drop_rule_removed={drop_removed}")
   payload={"stage":"10D-route-matrix","generated_at":datetime.now(timezone.utc).isoformat(),"checks":RESULTS,
            "passed":sum(x["status"]=="PASS" for x in RESULTS),"failed":sum(x["status"]=="FAIL" for x in RESULTS),
            "inconclusive":sum(x["status"]=="INCONCLUSIVE" for x in RESULTS),

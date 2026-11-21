@@ -790,3 +790,58 @@ def test_registry_rejects_ip_reuse_between_active_and_revoked_peers(tmp_path):
     with pytest.raises(ValueError, match="duplicate peer IP"):
         meter._fetch_registry()
     store.close()
+
+
+def test_crash_window_after_durable_ledger_before_nft_recovered_on_restart(tmp_path):
+    db_path = str(tmp_path / "crash-window.sqlite3")
+    registry = {"interface": "wg0", "peers": [], "remove_peers": [{
+        "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "revoked"
+    }]}
+    first_store = MeteringStore(db_path)
+    first_wg = FakeWG()
+    first_wg.fail_nft_add = True
+    first_acks = []
+    first_meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=first_store, command=first_wg,
+        post=lambda *args: first_acks.append(args) or 200,
+        registry_fetcher=lambda *_: registry,
+    )
+
+    # nft insertion fails after the ledger transaction committed. Agent fallback
+    # removes the WG peer but must not ACK while the firewall source guard is absent.
+    first_meter.sync_registry()
+    assert first_store.revoked_sources() == ["10.0.0.2"]
+    assert first_store.disabled(PUB)
+    assert not first_acks
+    first_store.close()
+
+    # Simulate abrupt process exit plus firewall ruleset reload: SQLite persists,
+    # but nftables' dynamic set is empty. A new process must restore the guard
+    # before it acknowledges the removal.
+    restarted_store = MeteringStore(db_path)
+    restarted_wg = FakeWG()
+    restarted_acks = []
+    sequence = []
+    def ack(*args):
+        sequence.append("ack")
+        restarted_acks.append(args)
+        return 200
+    original_command = restarted_wg.__call__
+    def ordered_command(args, **kwargs):
+        if args[:3] == ["nft", "add", "element"]:
+            sequence.append("guard")
+        if args[1:3] == ["set", "wg0"] and "remove" in args:
+            sequence.append("wg_remove")
+        return original_command(args, **kwargs)
+    restarted_meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=restarted_store, command=ordered_command,
+        post=ack, registry_fetcher=lambda *_: registry,
+    )
+    restarted_meter.sync_registry()
+    assert "10.0.0.2" in restarted_wg.revoked_ips
+    assert restarted_store.revoked_sources() == ["10.0.0.2"]
+    assert restarted_acks and b'"state":"revoked"' in restarted_acks[0][2]
+    assert sequence.index("guard") < sequence.index("ack")
+    restarted_store.close()

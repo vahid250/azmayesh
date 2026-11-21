@@ -678,7 +678,17 @@ class WireGuardMeter:
             # authorized again. Install/update the WG peer first, then remove
             # its persistent source guard in the same safe order.
             if self.store.has_revoked_source(peer.allowed_ips):
-                self._register_peer(peer)
+                try:
+                    self._register_peer(peer)
+                except Exception as exc:
+                    # Failed reauthorization must fail closed: retain the durable
+                    # source guard and keep the peer disabled for this cycle.
+                    self.store.mark_disabled(key)
+                    LOG.critical(
+                        "peer reauthorization failed; revocation guard retained for client %s (%s)",
+                        peer.client_id, type(exc).__name__,
+                    )
+                    continue
             else:
                 self.store.enable(key)
         self.peers = active

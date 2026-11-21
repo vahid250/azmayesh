@@ -47,6 +47,7 @@ def find_allow_handle():
 def main():
     listener=None
     client=None
+    other_listener=None
     revoke_handle=None
     try:
         server_code="""import socket,time
@@ -231,10 +232,11 @@ s.close()
             except Exception: pass
             try: client.wait(timeout=2)
             except subprocess.TimeoutExpired: client.kill()
-        if listener is not None and listener.poll() is None:
-            listener.terminate()
-            try: listener.wait(timeout=2)
-            except subprocess.TimeoutExpired: listener.kill()
+        for process in (other_listener, listener):
+            if process is not None and process.poll() is None:
+                process.terminate()
+                try: process.wait(timeout=2)
+                except subprocess.TimeoutExpired: process.kill()
         # The disposable lab is torn down by the workflow's EXIT trap.
 
 if __name__=="__main__": main()

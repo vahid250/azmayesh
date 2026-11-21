@@ -143,10 +143,10 @@ def main():
         if sink_ready:
             add=subprocess.run(["ip","netns","exec","rma10d-router","nft","insert","rule","inet","rma10d","forward",
                                 "ip","saddr","10.20.1.2","ip","daddr","10.20.11.2","tcp","dport","8443","counter","accept",
-                                "comment","RMA-EGRESS-POSITIVE-CONTROL"],capture_output=True,text=True)
+                                ],capture_output=True,text=True)
             listing=subprocess.run(["ip","netns","exec","rma10d-router","nft","-a","list","chain","inet","rma10d","forward"],capture_output=True,text=True)
             import re
-            match=re.search(r'comment "RMA-EGRESS-POSITIVE-CONTROL".*# handle (\d+)',listing.stdout)
+            match=re.search(r'ip saddr 10.20.1.2 ip daddr 10.20.11.2 tcp dport 8443.*# handle (\d+)',listing.stdout)
             control_handle=int(match.group(1)) if match else None
             control_ok,control_detail=egress_probe("edge") if add.returncode==0 else (False,add.stderr[:240])
             if control_handle is not None:

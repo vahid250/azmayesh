@@ -65,6 +65,18 @@ def context(ca,cert=None,key=None):
     c=ssl.create_default_context(cafile=str(ca))
     if cert and key: c.load_cert_chain(str(cert),str(key))
     return c
+def nft_drop_packets():
+    result=subprocess.run(["ip","netns","exec","rma10d-router","nft","-a","list","chain","inet","rma10d","forward"],capture_output=True,text=True,timeout=3)
+    if result.returncode!=0: return None
+    matches=__import__("re").findall(r"counter packets (\\d+) bytes (\\d+)",result.stdout)
+    return int(matches[-1][0]) if matches else None
+def egress_probe(namespace,port=8443):
+    code=("import socket; s=socket.socket(); s.settimeout(1.5); s.connect(('10.20.11.2',"+str(port)+")); "
+          "d=s.recv(2); s.close(); exit(0 if d==b'OK' else 2)")
+    try:
+        result=subprocess.run(["ip","netns","exec","rma10d-"+namespace,"python3","-c",code],capture_output=True,text=True,timeout=3)
+        return result.returncode==0,(result.stderr or result.stdout or f"exit {result.returncode}")[:240]
+    except subprocess.TimeoutExpired: return None,"probe timed out"
 def health_freshness(age,threshold=30.0):
     if age is None or not isinstance(age,(int,float)) or not threshold>0: return "ERROR"
     if age<0: return "ERROR"
@@ -110,9 +122,57 @@ def main():
             record("Q10DH-04 rogue client CA rejected by server with legal server trust","server rejection counter increases",f"client_error={client_rejected}; server_rejections_delta={after-before}; detail={TLS_EVIDENCE['last_rejection']}","PASS" if client_rejected and server_rejected else "FAIL")
         finally:
             httpd.shutdown(); httpd.server_close(); thread.join(timeout=2)
-    # External internet probes are not evidence of firewall enforcement in this isolated lab.
-    for zone in ZONES:
-        record(f"Q10DH-05 external egress enforcement from {zone}","controlled external sink and attributable drop counter","no external sink/counter configured","INCONCLUSIVE")
+    # Egress tests use an in-lab sink; no external Internet dependency.
+    sink_code=("import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); "
+                "s.bind(('0.0.0.0',8443)); s.listen(20); s.settimeout(.5); end=time.time()+35;\\n"
+                "while time.time()<end:\\n try: c,a=s.accept(); c.sendall(b'OK'); c.close()\\n"
+                " except socket.timeout: pass\\n"
+                "s.close()")
+    sink=subprocess.Popen(["ip","netns","exec","rma10d-egress","python3","-c",sink_code],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    control_handle=None
+    try:
+        sink_ready=False
+        for _ in range(25):
+            ready,detail=egress_probe("egress")
+            if ready is True: sink_ready=True; break
+            if sink.poll() is not None: break
+            time.sleep(.1)
+        record("Q10DH-05A controlled egress sink readiness","sink listener reachable inside sink namespace",detail,"PASS" if sink_ready else "FAIL")
+        control_ok=False
+        if sink_ready:
+            add=subprocess.run(["ip","netns","exec","rma10d-router","nft","insert","rule","inet","rma10d","forward",
+                                "ip","saddr","10.20.1.2","ip","daddr","10.20.11.2","tcp","dport","8443","counter","accept",
+                                "comment","RMA-EGRESS-POSITIVE-CONTROL"],capture_output=True,text=True)
+            listing=subprocess.run(["ip","netns","exec","rma10d-router","nft","-a","list","chain","inet","rma10d","forward"],capture_output=True,text=True)
+            import re
+            match=re.search(r'comment "RMA-EGRESS-POSITIVE-CONTROL".*# handle (\\d+)',listing.stdout)
+            control_handle=int(match.group(1)) if match else None
+            control_ok,control_detail=egress_probe("edge") if add.returncode==0 else (False,add.stderr[:240])
+            if control_handle is not None:
+                removed=subprocess.run(["ip","netns","exec","rma10d-router","nft","delete","rule","inet","rma10d","forward","handle",str(control_handle)],capture_output=True,text=True)
+                if removed.returncode!=0: control_ok=False; control_detail+="; control rule removal failed: "+removed.stderr[:200]
+            else:
+                control_ok=False; control_detail+="; temporary allow-rule handle not found (lab will be torn down)"
+        record("Q10DH-05B positive egress path control from edge","temporary exact allow rule permits sink connection",control_detail,"PASS" if control_ok else "FAIL")
+        for zone in ZONES:
+            before=nft_drop_packets()
+            actual,detail=egress_probe(zone)
+            after=nft_drop_packets()
+            delta=(after-before) if before is not None and after is not None else None
+            if not control_ok or delta is None:
+                status="INCONCLUSIVE"
+            elif actual is True:
+                status="FAIL"
+            elif delta>0:
+                status="PASS"
+            else:
+                status="INCONCLUSIVE"
+            record(f"Q10DH-05 external egress denied from {zone}","connection blocked and attributable nft forward-drop counter increases",
+                   f"probe={actual}; drop_counter_delta={delta}; {detail}",status)
+    finally:
+        if sink.poll() is None: sink.terminate()
+        try: sink.wait(timeout=2)
+        except subprocess.TimeoutExpired: sink.kill()
     health_server=HTTPServer(("127.0.0.1",0),HealthHandler)
     health_thread=threading.Thread(target=health_server.serve_forever,daemon=True); health_thread.start()
     try:

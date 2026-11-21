@@ -987,3 +987,29 @@ def test_crash_after_firewall_guard_before_wireguard_remove_retries_without_ack(
     assert restarted_store.disabled(PUB)
     assert restarted_acks and b'"state":"revoked"' in restarted_acks[0][2]
     restarted_store.close()
+
+
+def test_reauthorization_install_failure_recovers_on_next_reconciliation(tmp_path):
+    store = MeteringStore(str(tmp_path / "reauth-retry.sqlite3"))
+    wg = FakeWG()
+    wg.revoked_ips.add("10.0.0.2")
+    store.remember_revoked_source("10.0.0.2/32")
+    registry = {"interface": "wg0", "peers": [{
+        "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "peer_registered"
+    }], "remove_peers": []}
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg, post=lambda *_: 200,
+        registry_fetcher=lambda *_: registry,
+    )
+    wg.fail_wg_register = True
+    meter.sync_registry()
+    assert "10.0.0.2" in wg.revoked_ips
+    assert store.has_revoked_source("10.0.0.2/32")
+    assert store.disabled(PUB)
+    wg.fail_wg_register = False
+    meter.sync_registry()
+    assert "10.0.0.2" not in wg.revoked_ips
+    assert not store.has_revoked_source("10.0.0.2/32")
+    assert store.managed_peer(PUB) is not None
+    store.close()

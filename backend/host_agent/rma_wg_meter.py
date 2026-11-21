@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import base64
 import hashlib
 import hmac
@@ -825,6 +826,21 @@ class WireGuardMeter:
                 self._handle_usage_response(pending, status)
 
 
+
+def _acquire_process_lock(path: str) -> int:
+    """Hold an OS-level nonblocking lock to prevent duplicate host-agent processes."""
+    lock_path = Path(path)
+    lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise RuntimeError("another host-agent process already holds the instance lock") from None
+    os.fchmod(fd, 0o600)
+    return fd
+
+
 def build_from_env():
     api = os.environ.get("RMA_API_BASE_URL", "")
     secret = os.environ.get("RMA_METERING_SHARED_SECRET", "")
@@ -854,8 +870,11 @@ def main():
         level=os.environ.get("RMA_LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    meter, store, interval = build_from_env()
+    lock_path = os.environ.get("RMA_HOST_AGENT_LOCK", "/var/lib/rma-meter/agent.lock")
+    lock_fd = _acquire_process_lock(lock_path)
+    meter = store = None
     try:
+        meter, store, interval = build_from_env()
         if args.check:
             peers, removals = meter._fetch_registry()
             observed = meter.sample()
@@ -882,7 +901,9 @@ def main():
                 return 0
             time.sleep(interval)
     finally:
-        store.close()
+        if store is not None:
+            store.close()
+        os.close(lock_fd)
 
 
 if __name__ == "__main__":

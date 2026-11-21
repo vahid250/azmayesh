@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Stage 10D route matrix tests in disposable rma10d namespaces."""
-import json, os, socket, subprocess, time
+"""Stage 10D route matrix. DENY requires a positive destination control and kernel drop-counter evidence."""
+import json, os, re, socket, subprocess, time
 from datetime import datetime, timezone
 ZONES={"edge":1,"api":2,"control":3,"admin":4,"monitor":5,"vpn":6,"db":7,"ci":8,"rogue":9,"vpn_peer":10}
 MATRIX=[
@@ -24,20 +24,31 @@ MATRIX=[
 RESULTS=[]
 TEMP=os.environ.get("RUNNER_TEMP","/tmp")
 def run(args,timeout=4):
- return subprocess.run(args,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=timeout,check=False)
+ try: return subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,check=False,text=True)
+ except subprocess.TimeoutExpired as exc: return exc
 def start_server(dst,port):
  code=("import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); "
-       f"s.bind(('0.0.0.0',{port})); s.listen(8); s.settimeout(.5); end=time.time()+25;\n"
-       "while time.time()<end:\n try: c,a=s.accept(); c.sendall(b'OK'); c.close()\n except socket.timeout: pass\ns.close()")
+       f"s.bind(('0.0.0.0',{port})); s.listen(8); s.settimeout(.5); end=time.time()+40;\n"
+       "while time.time()<end:\n try: c,a=s.accept(); c.sendall(b'OK'); c.close()\n"
+       " except socket.timeout: pass\n"
+       "s.close()")
  return subprocess.Popen(["ip","netns","exec","rma10d-"+dst,"python3","-c",code],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 def probe(src,dst,port):
  ip=f"10.20.{ZONES[dst]}.2"
- code=f"import socket; s=socket.socket(); s.settimeout(1); s.connect(('{ip}',{port})); d=s.recv(2); s.close(); exit(0 if d==b'OK' else 2)"
- return run(["ip","netns","exec","rma10d-"+src,"python3","-c",code]).returncode==0
-def record(src,dst,port,expect,description,actual):
- passed=actual==expect
- RESULTS.append({"test":f"{src}->{dst}:{port}","expected":"ALLOW" if expect else "DENY","actual":"ALLOW" if actual else "DENY","passed":passed,"description":description})
- print(f"{'PASS' if passed else 'FAIL'} {src}->{dst}:{port} expected={'ALLOW' if expect else 'DENY'} actual={'ALLOW' if actual else 'DENY'} — {description}")
+ code=f"import socket; s=socket.socket(); s.settimeout(1.5); s.connect(('{ip}',{port})); d=s.recv(2); s.close(); exit(0 if d==b'OK' else 2)"
+ result=run(["ip","netns","exec","rma10d-"+src,"python3","-c",code],timeout=3)
+ if isinstance(result,subprocess.TimeoutExpired): return None,"probe timed out"
+ if result.returncode==0: return True,"connected and received OK"
+ return False,(result.stderr or result.stdout or f"exit {result.returncode}").strip()[:300]
+def drop_packets():
+ r=run(["ip","netns","exec","rma10d-router","nft","-a","list","chain","inet","rma10d","forward"],timeout=3)
+ if isinstance(r,subprocess.TimeoutExpired) or r.returncode!=0: return None
+ matches=re.findall(r"counter packets (\d+) bytes (\d+)",r.stdout)
+ return int(matches[-1][0]) if matches else None
+def record(src,dst,port,expect,description,status,actual,detail):
+ passed=status=="PASS"
+ RESULTS.append({"test":f"{src}->{dst}:{port}","expected":"ALLOW" if expect else "DENY","actual":actual,"status":status,"passed":passed,"description":description,"detail":detail})
+ print(f"{status} {src}->{dst}:{port} expected={'ALLOW' if expect else 'DENY'} actual={actual} — {description}; {detail}")
 def main():
  servers={}
  try:
@@ -45,23 +56,36 @@ def main():
    key=(dst,port)
    if key not in servers:
     servers[key]=start_server(dst,port)
-    ready=False
-    for _ in range(20):
-     if servers[key].poll() is not None: break
-     try:
-      if probe(dst,dst,port): ready=True; break
-     except Exception: pass
+    ready=False; readiness_detail="listener not ready"
+    for _ in range(30):
+     if servers[key].poll() is not None:
+      readiness_detail=f"listener process exited {servers[key].returncode}"; break
+     result,detail=probe(dst,dst,port)
+     if result is True: ready=True; readiness_detail="destination positive control succeeded"; break
+     readiness_detail=detail
      time.sleep(.1)
     if not ready:
-     record(src,dst,port,expect,desc,False if expect else True); continue
-   try: actual=probe(src,dst,port)
-   except Exception: actual=False
-   record(src,dst,port,expect,desc,actual)
-  payload={"stage":"10D-route-matrix","generated_at":datetime.now(timezone.utc).isoformat(),"checks":RESULTS,"passed":sum(x["passed"] for x in RESULTS),"failed":sum(not x["passed"] for x in RESULTS),"scope":"Disposable CI namespaces only; not production/cloud proof."}
+     record(src,dst,port,expect,"destination preflight", "INCONCLUSIVE","UNKNOWN",readiness_detail)
+     continue
+   before=drop_packets() if not expect else None
+   actual,detail=probe(src,dst,port)
+   if expect:
+    status="PASS" if actual is True else "FAIL"
+    record(src,dst,port,expect,desc,status,"ALLOW" if actual is True else "NO-CONNECTION",detail)
+   else:
+    after=drop_packets()
+    delta=(after-before) if before is not None and after is not None else None
+    status="PASS" if actual is False and delta is not None and delta>0 else ("FAIL" if actual is True else "INCONCLUSIVE")
+    actual_text="ALLOW" if actual is True else "DENY" if actual is False else "UNKNOWN"
+    record(src,dst,port,expect,desc,status,actual_text,f"{detail}; nft forward-drop counter delta={delta}")
+  payload={"stage":"10D-route-matrix","generated_at":datetime.now(timezone.utc).isoformat(),"checks":RESULTS,
+           "passed":sum(x["status"]=="PASS" for x in RESULTS),"failed":sum(x["status"]=="FAIL" for x in RESULTS),
+           "inconclusive":sum(x["status"]=="INCONCLUSIVE" for x in RESULTS),
+           "scope":"Disposable namespaces; DENY requires destination preflight and attributable nftables forward-drop counter increase."}
   path=os.path.join(TEMP,"phase-a-stage10d-route-matrix-evidence.json")
   with open(path,"w",encoding="utf-8") as f: json.dump(payload,f,indent=2)
-  print(f"Summary: {payload['passed']}/{len(RESULTS)} checks passed; evidence {path}")
-  if payload["failed"]: raise SystemExit(1)
+  print(f"Summary: PASS={payload['passed']} FAIL={payload['failed']} INCONCLUSIVE={payload['inconclusive']}; evidence {path}")
+  if payload["failed"] or payload["inconclusive"]: raise SystemExit(1)
  finally:
   for p in servers.values():
    if p.poll() is None: p.terminate()

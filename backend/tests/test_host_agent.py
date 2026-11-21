@@ -31,6 +31,7 @@ class FakeWG:
         self.revoked_ips = set()
         self.fail_nft_add = False
         self.fail_guard = False
+        self.fail_wg_remove = False
 
     def __call__(self, args, **kwargs):
         self.calls.append(args)
@@ -58,6 +59,8 @@ class FakeWG:
                 raise subprocess.CalledProcessError(1, args, stderr="simulated wg dump failure")
             output = "\t".join(["private", "public", "51820", "off"]) + "\n" if self.hide_peer else dump(self.rx, self.tx)
             return subprocess.CompletedProcess(args, 0, output, "")
+        if args[1:3] == ["set", "wg0"] and "remove" in args and self.fail_wg_remove:
+            raise subprocess.CalledProcessError(1, args, stderr="simulated WireGuard removal failure")
         if args[1:3] == ["set", "wg0"] and "allowed-ips" in args:
             self.hide_peer = False
         return subprocess.CompletedProcess(args, 0, "", "")
@@ -844,4 +847,41 @@ def test_crash_window_after_durable_ledger_before_nft_recovered_on_restart(tmp_p
     assert restarted_store.revoked_sources() == ["10.0.0.2"]
     assert restarted_acks and b'"state":"revoked"' in restarted_acks[0][2]
     assert sequence.index("guard") < sequence.index("ack")
+    restarted_store.close()
+
+
+def test_crash_after_firewall_guard_before_wireguard_remove_retries_without_ack(tmp_path):
+    db_path = str(tmp_path / "guard-before-remove.sqlite3")
+    registry = {"interface": "wg0", "peers": [], "remove_peers": [{
+        "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "revoked"
+    }]}
+    store = MeteringStore(db_path)
+    wg = FakeWG()
+    wg.fail_wg_remove = True
+    first_acks = []
+    first_meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg,
+        post=lambda *args: first_acks.append(args) or 200,
+        registry_fetcher=lambda *_: registry,
+    )
+    first_meter.sync_registry()
+    assert "10.0.0.2" in wg.revoked_ips
+    assert store.has_revoked_source("10.0.0.2/32")
+    assert not first_acks
+    store.close()
+
+    wg.fail_wg_remove = False
+    restarted_store = MeteringStore(db_path)
+    restarted_acks = []
+    restarted_meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=restarted_store, command=wg,
+        post=lambda *args: restarted_acks.append(args) or 200,
+        registry_fetcher=lambda *_: registry,
+    )
+    restarted_meter.sync_registry()
+    assert "10.0.0.2" in wg.revoked_ips
+    assert restarted_store.disabled(PUB)
+    assert restarted_acks and b'"state":"revoked"' in restarted_acks[0][2]
     restarted_store.close()

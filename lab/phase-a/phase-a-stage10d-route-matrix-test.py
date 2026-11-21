@@ -46,7 +46,7 @@ def nft_listing():
  return r.stdout
 def find_handle(listing,src_ip,dst_ip,port,action):
  if listing is None: return None
- pattern=rf"ip saddr {re.escape(src_ip)} ip daddr {re.escape(dst_ip)} tcp dport {port} counter {action}.*# handle (\d+)"
+ pattern=rf"ip saddr {re.escape(src_ip)} ip daddr {re.escape(dst_ip)} tcp dport {port} counter packets \\d+ bytes \\d+ {action}.*# handle (\d+)"
  match=re.search(pattern,listing)
  return int(match.group(1)) if match else None
 def rule_packets(handle):

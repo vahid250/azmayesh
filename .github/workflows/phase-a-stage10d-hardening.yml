@@ -38,6 +38,7 @@ jobs:
           python3 --version
           openssl version
       - name: Run Stage 10D-Hardening and route tests while preserving evidence
+        # Remediation audit branch: always preserve both test logs and JSON before gate failure.
         shell: bash
         run: |
           set -Eeuo pipefail

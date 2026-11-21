@@ -12,7 +12,7 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 
 ## Operating assumptions and limitations
 1. Start the agent before enabling customer peers. The first sample is charged from zero.
-2. Run exactly one agent per WireGuard interface. The API's WG_INTERFACE and the agent's RMA_WG_INTERFACE must identify the same interface.
+2. Run exactly one agent per WireGuard interface. The process holds a Linux `flock` singleton lock (default `/var/lib/rma-meter/agent.lock`, override with `RMA_HOST_AGENT_LOCK`) to prevent duplicate instances from reconciling concurrently. The API's WG_INTERFACE and the agent's RMA_WG_INTERFACE must identify the same interface.
 3. Polling is interval-based, not kernel-level byte-perfect shaping. Traffic can continue between a sample and peer removal.
 4. If counters decrease after an interface/host restart, the new counter value is counted as a fresh delta.
 5. Only peers in the signed backend registry are managed and metered.

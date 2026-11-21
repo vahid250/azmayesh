@@ -770,3 +770,23 @@ def test_host_agent_instance_lock_blocks_other_process_and_releases_on_close(tmp
     # can acquire it after the prior process exits.
     new_fd = _acquire_process_lock(lock_path)
     os.close(new_fd)
+
+
+def test_registry_rejects_ip_reuse_between_active_and_revoked_peers(tmp_path):
+    other_pub = base64.b64encode(b"q" * 32).decode("ascii")
+    store = MeteringStore(str(tmp_path / "state.sqlite3"))
+    payload = {
+        "interface": "wg0",
+        "peers": [{"client_id": 8, "public_key": other_pub,
+                   "allowed_ips": "10.0.0.2/32", "state": "peer_registered"}],
+        "remove_peers": [{"client_id": 7, "public_key": PUB,
+                          "allowed_ips": "10.0.0.2/32", "state": "revoked"}],
+    }
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=FakeWG(), post=lambda *_: 200,
+        registry_fetcher=lambda *_: payload,
+    )
+    with pytest.raises(ValueError, match="duplicate peer IP"):
+        meter._fetch_registry()
+    store.close()

@@ -139,6 +139,7 @@ def main():
             time.sleep(.1)
         record("Q10DH-05A controlled egress sink readiness","sink listener reachable inside sink namespace",detail,"PASS" if sink_ready else "FAIL")
         control_ok=False
+        control_detail=detail if not sink_ready else 'positive control not yet run'
         if sink_ready:
             add=subprocess.run(["ip","netns","exec","rma10d-router","nft","insert","rule","inet","rma10d","forward",
                                 "ip","saddr","10.20.1.2","ip","daddr","10.20.11.2","tcp","dport","8443","counter","accept",

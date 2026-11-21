@@ -1013,3 +1013,89 @@ def test_reauthorization_install_failure_recovers_on_next_reconciliation(tmp_pat
     assert not store.has_revoked_source("10.0.0.2/32")
     assert store.managed_peer(PUB) is not None
     store.close()
+
+
+def test_integrated_revocation_restart_failure_and_reauthorization_recovery(tmp_path):
+    """Exercise the complete peer lifecycle with failures and recovery in one test."""
+    db_path = str(tmp_path / "integrated-peer-lifecycle.sqlite3")
+    revoked_registry = {"interface": "wg0", "peers": [], "remove_peers": [{
+        "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "revoked"
+    }]}
+    active_registry = {"interface": "wg0", "peers": [{
+        "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "peer_registered"
+    }], "remove_peers": []}
+
+    wg = FakeWG()
+    order = []
+    ack_events = []
+    store = MeteringStore(db_path)
+    wg.fail_nft_add = True
+
+    def command(args, **kwargs):
+        if args[:3] == ["nft", "add", "element"] and not wg.fail_nft_add:
+            order.append("guard")
+        if args[1:3] == ["set", "wg0"] and "remove" in args and not wg.fail_wg_remove:
+            order.append("wg_remove")
+        if args[:3] == ["nft", "delete", "element"]:
+            order.append("unblock")
+        if args[1:3] == ["set", "wg0"] and "allowed-ips" in args and not wg.fail_wg_register:
+            order.append("install")
+        return wg(args, **kwargs)
+
+    def revoke_ack(*args):
+        ack_events.append("revoked_ack")
+        order.append("ack")
+        return 200
+
+    first_meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=command, post=revoke_ack,
+        registry_fetcher=lambda *_: revoked_registry,
+    )
+
+    # First attempt: durable ledger commit survives a failed firewall mutation.
+    first_meter.sync_registry()
+    assert store.has_revoked_source("10.0.0.2/32")
+    assert store.disabled(PUB)
+    assert "10.0.0.2" not in wg.revoked_ips
+    assert not ack_events
+    store.close()
+
+    # Restart with the firewall mutation repaired: restore the guard and ACK revoke.
+    store = MeteringStore(db_path)
+    wg.fail_nft_add = False
+    restart_meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=command, post=revoke_ack,
+        registry_fetcher=lambda *_: revoked_registry,
+    )
+    restart_meter.sync_registry()
+    assert "10.0.0.2" in wg.revoked_ips
+    assert store.has_revoked_source("10.0.0.2/32")
+    assert ack_events == ["revoked_ack"]
+    assert order.index("guard") < order.index("ack")
+    assert "10.0.0.2" not in {peer.allowed_ips.split("/")[0] for peer in store.current_peers().values()}
+
+    # Reauthorization fails to install WG: fail closed, guard/ledger remain.
+    wg.fail_wg_register = True
+    reauth_acks = []
+    reauth_meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=command,
+        post=lambda *args: reauth_acks.append(args) or 200,
+        registry_fetcher=lambda *_: active_registry,
+    )
+    reauth_meter.sync_registry()
+    assert "10.0.0.2" in wg.revoked_ips
+    assert store.has_revoked_source("10.0.0.2/32")
+    assert store.disabled(PUB)
+    assert not store.managed_peer(PUB)
+
+    # Retry after repair: install WireGuard first, then unlock and clear durable state.
+    wg.fail_wg_register = False
+    reauth_meter.sync_registry()
+    assert "10.0.0.2" not in wg.revoked_ips
+    assert not store.has_revoked_source("10.0.0.2/32")
+    assert store.managed_peer(PUB) is not None
+    assert order.index("install") < order.index("unblock")
+    store.close()

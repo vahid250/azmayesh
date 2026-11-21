@@ -178,7 +178,44 @@ except OSError:
                f"{'DENIED' if new.returncode==0 else 'CONNECTED/UNEXPECTED'}; counter delta={new_delta}",
                new.returncode==0 and new_delta is not None and new_delta>0)
 
-        # Verify source-scoped revocation does not collateral-block an unrelated approved route.\n        other_listener_code="""import socket,time\ns=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('0.0.0.0',9443)); s.listen(4); s.settimeout(4)\nend=time.time()+4\nwhile time.time()<end:\n try:\n  c,a=s.accept(); c.settimeout(1); data=c.recv(1024)\n  if data: c.sendall(b'ACK:'+data); c.close(); break\n  c.close()\n except socket.timeout:\n  break\ns.close()\n"""\n        other_listener=subprocess.Popen(["ip","netns","exec","rma10d-control","python3","-u","-c",other_listener_code],\n            stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)\n        other_ready=False\n        for _ in range(30):\n            if other_listener.poll() is not None: break\n            probe=run(["ip","netns","exec","rma10d-admin","python3","-c",\n                "import socket; s=socket.create_connection(('10.20.3.2',9443),timeout=.3); s.close()"],\n                timeout=2,check=False)\n            if probe.returncode==0: other_ready=True; break\n            time.sleep(.1)\n        if not other_ready: raise RuntimeError("Admin-to-control listener did not become ready")\n        unrelated_before=counter()\n        unrelated=run(["ip","netns","exec","rma10d-admin","python3","-c",\n            "import socket; s=socket.create_connection(('10.20.3.2',9443),timeout=2); s.sendall(b'authorized-route'); s.settimeout(2); print(s.recv(1024).decode()); s.close()"],\n            timeout=4,check=False)\n        unrelated_after=counter()\n        unrelated_delta=None if unrelated_before is None or unrelated_after is None else unrelated_after-unrelated_before\n        record("Q10DS-07 unrelated approved route remains usable after peer revocation",\n               "Admin->Control 9443 ACK and peer-source drop counter unchanged",\n               f"{unrelated.stdout.strip()}; revocation counter delta={unrelated_delta}",\n               unrelated.returncode==0 and "ACK:authorized-route" in unrelated.stdout and unrelated_delta==0)\n        try: other_listener.wait(timeout=1)\n        except subprocess.TimeoutExpired: other_listener.kill(); other_listener.wait(timeout=1)\n\n        payload={"stage":"10D-stateful-firewall-revocation",
+        # Verify source-scoped revocation does not collateral-block an unrelated approved route.
+        other_listener_code="""import socket,time
+s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('0.0.0.0',9443)); s.listen(4); s.settimeout(4)
+end=time.time()+4
+while time.time()<end:
+ try:
+  c,a=s.accept(); c.settimeout(1); data=c.recv(1024)
+  if data: c.sendall(b'ACK:'+data); c.close(); break
+  c.close()
+ except socket.timeout:
+  break
+s.close()
+"""
+        other_listener=subprocess.Popen(["ip","netns","exec","rma10d-control","python3","-u","-c",other_listener_code],
+            stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        other_ready=False
+        for _ in range(30):
+            if other_listener.poll() is not None: break
+            probe=run(["ip","netns","exec","rma10d-admin","python3","-c",
+                "import socket; s=socket.create_connection(('10.20.3.2',9443),timeout=.3); s.close()"],
+                timeout=2,check=False)
+            if probe.returncode==0: other_ready=True; break
+            time.sleep(.1)
+        if not other_ready: raise RuntimeError("Admin-to-control listener did not become ready")
+        unrelated_before=counter()
+        unrelated=run(["ip","netns","exec","rma10d-admin","python3","-c",
+            "import socket; s=socket.create_connection(('10.20.3.2',9443),timeout=2); s.sendall(b'authorized-route'); s.settimeout(2); print(s.recv(1024).decode()); s.close()"],
+            timeout=4,check=False)
+        unrelated_after=counter()
+        unrelated_delta=None if unrelated_before is None or unrelated_after is None else unrelated_after-unrelated_before
+        record("Q10DS-07 unrelated approved route remains usable after peer revocation",
+               "Admin->Control 9443 ACK and peer-source drop counter unchanged",
+               f"{unrelated.stdout.strip()}; revocation counter delta={unrelated_delta}",
+               unrelated.returncode==0 and "ACK:authorized-route" in unrelated.stdout and unrelated_delta==0)
+        try: other_listener.wait(timeout=1)
+        except subprocess.TimeoutExpired: other_listener.kill(); other_listener.wait(timeout=1)
+
+        payload={"stage":"10D-stateful-firewall-revocation",
             "generated_at":datetime.now(timezone.utc).isoformat(),"checks":RESULTS,
             "passed":sum(x["outcome"]=="PASS" for x in RESULTS),
             "failed":sum(x["outcome"]=="FAIL" for x in RESULTS),

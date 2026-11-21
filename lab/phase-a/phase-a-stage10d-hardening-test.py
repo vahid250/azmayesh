@@ -129,7 +129,6 @@ def main():
                 " except socket.timeout: pass\n"
                 "s.close()")
     sink=subprocess.Popen(["ip","netns","exec","rma10d-egress","python3","-c",sink_code],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    control_handle=None
     try:
         sink_ready=False
         for _ in range(25):
@@ -138,29 +137,35 @@ def main():
             if sink.poll() is not None: break
             time.sleep(.1)
         record("Q10DH-05A controlled egress sink readiness","sink listener reachable inside sink namespace",detail,"PASS" if sink_ready else "FAIL")
-        control_ok=False
-        control_detail=detail if not sink_ready else 'positive control not yet run'
+        zone_positive_controls={}
         if sink_ready:
-            add=subprocess.run(["ip","netns","exec","rma10d-router","nft","insert","rule","inet","rma10d","forward",
-                                "ip","saddr","10.20.1.2","ip","daddr","10.20.11.2","tcp","dport","8443","counter","accept",
-                                ],capture_output=True,text=True)
-            listing=subprocess.run(["ip","netns","exec","rma10d-router","nft","-a","list","chain","inet","rma10d","forward"],capture_output=True,text=True)
             import re
-            match=re.search(r'ip saddr 10.20.1.2 ip daddr 10.20.11.2 tcp dport 8443.*# handle (\d+)',listing.stdout)
-            control_handle=int(match.group(1)) if match else None
-            control_ok,control_detail=egress_probe("edge") if add.returncode==0 else (False,add.stderr[:240])
-            if control_handle is not None:
-                removed=subprocess.run(["ip","netns","exec","rma10d-router","nft","delete","rule","inet","rma10d","forward","handle",str(control_handle)],capture_output=True,text=True)
-                if removed.returncode!=0: control_ok=False; control_detail+="; control rule removal failed: "+removed.stderr[:200]
-            else:
-                control_ok=False; control_detail+="; temporary allow-rule handle not found (lab will be torn down)"
-        record("Q10DH-05B positive egress path control from edge","temporary exact allow rule permits sink connection",control_detail,"PASS" if control_ok else "FAIL")
+            for zone in ZONES:
+                source_ip=f"10.20.{ZONES.index(zone)+1}.2"
+                add=subprocess.run(["ip","netns","exec","rma10d-router","nft","insert","rule","inet","rma10d","forward",
+                                    "ip","saddr",source_ip,"ip","daddr","10.20.11.2","tcp","dport","8443","counter","accept"],
+                                    capture_output=True,text=True)
+                listing=subprocess.run(["ip","netns","exec","rma10d-router","nft","-a","list","chain","inet","rma10d","forward"],
+                                      capture_output=True,text=True)
+                match=re.search(rf"ip saddr {re.escape(source_ip)} ip daddr 10.20.11.2 tcp dport 8443.*# handle (\\d+)",listing.stdout)
+                handle=int(match.group(1)) if match else None
+                positive,detail=egress_probe(zone) if add.returncode==0 else (False,add.stderr[:240])
+                if handle is not None:
+                    removed=subprocess.run(["ip","netns","exec","rma10d-router","nft","delete","rule","inet","rma10d","forward","handle",str(handle)],
+                                          capture_output=True,text=True)
+                    if removed.returncode!=0:
+                        positive=False; detail+="; temporary allow rule removal failed: "+removed.stderr[:200]
+                else:
+                    positive=False; detail+="; allow-rule handle missing (lab cleanup will remove it)"
+                zone_positive_controls[zone]=positive
+                record(f"Q10DH-05B positive egress path control from {zone}","temporary exact allow permits sink connection and is removed",
+                       detail,"PASS" if positive else "FAIL")
         for zone in ZONES:
             before=nft_drop_packets()
             actual,detail=egress_probe(zone)
             after=nft_drop_packets()
             delta=(after-before) if before is not None and after is not None else None
-            if not control_ok or delta is None:
+            if not sink_ready or not zone_positive_controls.get(zone,False) or delta is None:
                 status="INCONCLUSIVE"
             elif actual is True:
                 status="FAIL"
@@ -168,8 +173,8 @@ def main():
                 status="PASS"
             else:
                 status="INCONCLUSIVE"
-            record(f"Q10DH-05 external egress denied from {zone}","connection blocked and attributable nft forward-drop counter increases",
-                   f"probe={actual}; drop_counter_delta={delta}; {detail}",status)
+            record(f"Q10DH-05 controlled sink egress denied from {zone}","connection blocked and attributable nft forward-drop counter increases",
+                   f"positive_control={zone_positive_controls.get(zone)}; probe={actual}; drop_counter_delta={delta}; {detail}",status)
     finally:
         if sink.poll() is None: sink.terminate()
         try: sink.wait(timeout=2)
@@ -190,7 +195,7 @@ def main():
     payload={"stage":"10D-Hardening","generated_at":now.isoformat(),"tests":RESULTS,"tls_evidence":TLS_EVIDENCE,
              "passed":sum(x["status"]=="PASS" for x in RESULTS),"failed":sum(x["status"]=="FAIL" for x in RESULTS),
              "inconclusive":sum(x["status"]=="INCONCLUSIVE" for x in RESULTS),
-             "scope":"Disposable CI namespaces and localhost TLS lab only; external egress is INCONCLUSIVE without a controlled sink."}
+             "scope":"Disposable CI namespaces and localhost TLS lab only; public Internet egress is not directly tested; controlled sink path is used for policy evidence."}
     with open(out,"w",encoding="utf-8") as f: json.dump(payload,f,indent=2)
     print(f"Evidence written: {out}")
     print(f"Stage 10D-Hardening summary: PASS={payload['passed']} FAIL={payload['failed']} INCONCLUSIVE={payload['inconclusive']}")

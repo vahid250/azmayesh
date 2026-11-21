@@ -33,7 +33,9 @@ On the VPN host, verify the interface is already configured and running, and con
     sudo wg show wg0
     sudo wg show wg0 dump
 
-Install Python 3 and wireguard-tools. Copy the host_agent directory to /opt/rma/host_agent. Create the dedicated account and state directory:
+Install Python 3 and wireguard-tools. Copy the host_agent directory to /opt/rma/host_agent. Create the dedicated account and state directory. The agent uses `/var/lib/rma-meter/agent.lock` by default and acquires an OS-level exclusive lock before startup; a second instance exits without starting reconciliation. Override the path only when needed using `RMA_HOST_AGENT_LOCK` in the environment file. Ensure the lock file remains in a directory writable only by the dedicated account:
+
+
 
     sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin rma-meter
     sudo install -d -o rma-meter -g rma-meter -m 0700 /var/lib/rma-meter

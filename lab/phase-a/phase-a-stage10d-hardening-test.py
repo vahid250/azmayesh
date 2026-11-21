@@ -68,7 +68,7 @@ def context(ca,cert=None,key=None):
 def nft_drop_packets():
     result=subprocess.run(["ip","netns","exec","rma10d-router","nft","-a","list","chain","inet","rma10d","forward"],capture_output=True,text=True,timeout=3)
     if result.returncode!=0: return None
-    matches=__import__("re").findall(r"counter packets (\\d+) bytes (\\d+)",result.stdout)
+    matches=__import__("re").findall(r"counter packets (\d+) bytes (\d+)",result.stdout)
     return int(matches[-1][0]) if matches else None
 def egress_probe(namespace,port=8443):
     code=("import socket; s=socket.socket(); s.settimeout(1.5); s.connect(('10.20.11.2',"+str(port)+")); "
@@ -124,9 +124,9 @@ def main():
             httpd.shutdown(); httpd.server_close(); thread.join(timeout=2)
     # Egress tests use an in-lab sink; no external Internet dependency.
     sink_code=("import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); "
-                "s.bind(('0.0.0.0',8443)); s.listen(20); s.settimeout(.5); end=time.time()+35;\\n"
-                "while time.time()<end:\\n try: c,a=s.accept(); c.sendall(b'OK'); c.close()\\n"
-                " except socket.timeout: pass\\n"
+                "s.bind(('0.0.0.0',8443)); s.listen(20); s.settimeout(.5); end=time.time()+35;\n"
+                "while time.time()<end:\n try: c,a=s.accept(); c.sendall(b'OK'); c.close()\n"
+                " except socket.timeout: pass\n"
                 "s.close()")
     sink=subprocess.Popen(["ip","netns","exec","rma10d-egress","python3","-c",sink_code],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     control_handle=None
@@ -145,7 +145,7 @@ def main():
                                 "comment","RMA-EGRESS-POSITIVE-CONTROL"],capture_output=True,text=True)
             listing=subprocess.run(["ip","netns","exec","rma10d-router","nft","-a","list","chain","inet","rma10d","forward"],capture_output=True,text=True)
             import re
-            match=re.search(r'comment "RMA-EGRESS-POSITIVE-CONTROL".*# handle (\\d+)',listing.stdout)
+            match=re.search(r'comment "RMA-EGRESS-POSITIVE-CONTROL".*# handle (\d+)',listing.stdout)
             control_handle=int(match.group(1)) if match else None
             control_ok,control_detail=egress_probe("edge") if add.returncode==0 else (False,add.stderr[:240])
             if control_handle is not None:

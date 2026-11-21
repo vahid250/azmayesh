@@ -11,6 +11,8 @@ This process runs on the actual VPN host, never in Cloudflare Workers or a brows
 - Permanent usage-report rejections (HTTP 400, 401, 403, 404, 409, 410, or 422) quarantine the event in the durable local outbox for operator review and trigger immediate peer removal; they are not silently discarded or automatically retried. Transient HTTP errors and network errors retain the pending report for bounded retry; the peer is removed if no report is accepted, or the WireGuard counters cannot be sampled, before the outage window expires.
 
 ## Operating assumptions and limitations
+- Registry snapshots reject duplicate assigned IPv4 addresses across active and revoked/suspended peers. IP reuse is intentionally not allowed in one snapshot: first complete revocation/removal and acknowledgement, then assign that address in a later registry cycle to avoid ambiguous source-IP guard ownership.
+
 1. Start the agent before enabling customer peers. The first sample is charged from zero.
 2. Run exactly one agent per WireGuard interface. The process holds a Linux `flock` singleton lock (default `/var/lib/rma-meter/agent.lock`, override with `RMA_HOST_AGENT_LOCK`) to prevent duplicate instances from reconciling concurrently. The API's WG_INTERFACE and the agent's RMA_WG_INTERFACE must identify the same interface.
 3. Polling is interval-based, not kernel-level byte-perfect shaping. Traffic can continue between a sample and peer removal.

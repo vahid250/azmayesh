@@ -65,11 +65,22 @@ def context(ca,cert=None,key=None):
     c=ssl.create_default_context(cafile=str(ca))
     if cert and key: c.load_cert_chain(str(cert),str(key))
     return c
-def nft_drop_packets():
+def nft_chain_listing():
     result=subprocess.run(["ip","netns","exec","rma10d-router","nft","-a","list","chain","inet","rma10d","forward"],capture_output=True,text=True,timeout=3)
-    if result.returncode!=0: return None
-    matches=__import__("re").findall(r"counter packets (\d+) bytes (\d+)",result.stdout)
-    return int(matches[-1][0]) if matches else None
+    return result.stdout if result.returncode==0 else None
+def nft_rule_handle(listing,source_ip,dest_ip,port,action):
+    if listing is None: return None
+    pattern=rf"ip saddr {__import__('re').escape(source_ip)} ip daddr {__import__('re').escape(dest_ip)} tcp dport {port} counter {action}.*# handle (\d+)"
+    match=__import__("re").search(pattern,listing)
+    return int(match.group(1)) if match else None
+def nft_rule_packets(handle):
+    listing=nft_chain_listing()
+    if listing is None: return None
+    for line in listing.splitlines():
+        if __import__("re").search(rf"# handle {handle}\b",line):
+            match=__import__("re").search(r"counter packets (\d+) bytes (\d+)",line)
+            return int(match.group(1)) if match else None
+    return None
 def egress_probe(namespace,port=8443):
     code=("import socket; s=socket.socket(); s.settimeout(1.5); s.connect(('10.20.11.2',"+str(port)+")); "
           "d=s.recv(2); s.close(); exit(0 if d==b'OK' else 2)")
@@ -161,11 +172,24 @@ def main():
                 record(f"Q10DH-05B positive egress path control from {zone}","temporary exact allow permits sink connection and is removed",
                        detail,"PASS" if positive else "FAIL")
         for zone in ZONES:
-            before=nft_drop_packets()
+            source_ip=f"10.20.{ZONES.index(zone)+1}.2"
+            add_drop=subprocess.run(["ip","netns","exec","rma10d-router","nft","insert","rule","inet","rma10d","forward",
+                                    "ip","saddr",source_ip,"ip","daddr","10.20.11.2","tcp","dport","8443","counter","drop"],
+                                    capture_output=True,text=True)
+            listing=nft_chain_listing()
+            drop_handle=nft_rule_handle(listing,source_ip,"10.20.11.2",8443,"drop")
+            before=nft_rule_packets(drop_handle) if drop_handle is not None else None
             actual,detail=egress_probe(zone)
-            after=nft_drop_packets()
+            after=nft_rule_packets(drop_handle) if drop_handle is not None else None
             delta=(after-before) if before is not None and after is not None else None
-            if not sink_ready or not zone_positive_controls.get(zone,False) or delta is None:
+            cleanup_ok=False
+            if drop_handle is not None:
+                removed=subprocess.run(["ip","netns","exec","rma10d-router","nft","delete","rule","inet","rma10d","forward","handle",str(drop_handle)],
+                                      capture_output=True,text=True)
+                cleanup_ok=removed.returncode==0
+            if add_drop.returncode!=0 or drop_handle is None or not cleanup_ok:
+                status="INCONCLUSIVE"
+            elif not sink_ready or not zone_positive_controls.get(zone,False) or delta is None:
                 status="INCONCLUSIVE"
             elif actual is True:
                 status="FAIL"
@@ -173,8 +197,8 @@ def main():
                 status="PASS"
             else:
                 status="INCONCLUSIVE"
-            record(f"Q10DH-05 controlled sink egress denied from {zone}","connection blocked and attributable nft forward-drop counter increases",
-                   f"positive_control={zone_positive_controls.get(zone)}; probe={actual}; drop_counter_delta={delta}; {detail}",status)
+            record(f"Q10DH-05 controlled sink egress denied from {zone}","connection blocked and per-zone exact nft drop counter increases; temporary counter rule removed",
+                   f"positive_control={zone_positive_controls.get(zone)}; probe={actual}; exact_drop_counter_delta={delta}; temporary_drop_rule_removed={cleanup_ok}; {detail}",status)
     finally:
         if sink.poll() is None: sink.terminate()
         try: sink.wait(timeout=2)

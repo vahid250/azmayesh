@@ -2,12 +2,14 @@ import base64
 import hashlib
 import hmac
 import subprocess
+import os
+import sys
 
 import pytest
 
 from host_agent.rma_wg_meter import (
     METERING_PATH, Counters, MeteringStore, Peer, WireGuardMeter,
-    parse_wg_dump, sign_request,
+    parse_wg_dump, sign_request, _acquire_process_lock,
 )
 
 SECRET = "agent-test-secret-that-is-longer-than-thirty-two-characters"
@@ -740,3 +742,31 @@ def test_concurrent_revoke_then_reauthorize_keeps_guard_until_peer_install(tmp_p
     )
     assert install_index < unlock_index
     store.close()
+
+
+def test_host_agent_instance_lock_blocks_other_process_and_releases_on_close(tmp_path):
+    lock_path = str(tmp_path / "agent.lock")
+    fd = _acquire_process_lock(lock_path)
+    try:
+        child_code = (
+            "from host_agent.rma_wg_meter import _acquire_process_lock; "
+            "import sys; "
+            "try: _acquire_process_lock(sys.argv[1])\\n"
+            "except RuntimeError: sys.exit(23)\\n"
+            "sys.exit(0)"
+        )
+        child_env = os.environ.copy()
+        child_env["PYTHONPATH"] = os.pathsep.join(
+            filter(None, [os.getcwd(), child_env.get("PYTHONPATH", "")])
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", child_code, lock_path],
+            env=child_env, capture_output=True, text=True, timeout=5,
+        )
+        assert result.returncode == 23, result.stderr
+    finally:
+        os.close(fd)
+    # Lock is released when the owning file descriptor closes; a new instance
+    # can acquire it after the prior process exits.
+    new_fd = _acquire_process_lock(lock_path)
+    os.close(new_fd)

@@ -5,7 +5,9 @@ on:
   pull_request:
     paths:
       - "lab/phase-a/phase-a-stage10d-route-matrix-test.py"
+      - "lab/phase-a/phase-a-stage10d-lab.sh"
       - ".github/workflows/phase-a-stage10d-route-matrix.yml"
+      - ".github/workflows/phase-a-stage10d-hardening.yml"
 
 permissions:
   contents: read
@@ -32,7 +34,7 @@ jobs:
           trap cleanup EXIT
           sudo bash lab/phase-a/phase-a-stage10d-lab.sh up
           sudo -E python3 lab/phase-a/phase-a-stage10d-route-matrix-test.py 2>&1 | tee "$LOG"
-      - name: Upload route matrix evidence
+      - name: Upload route matrix evidence (also on failure)
         if: always()
         uses: actions/upload-artifact@v4
         with:

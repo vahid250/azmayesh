@@ -70,7 +70,7 @@ def nft_chain_listing():
     return result.stdout if result.returncode==0 else None
 def nft_rule_handle(listing,source_ip,dest_ip,port,action):
     if listing is None: return None
-    pattern=rf"ip saddr {__import__('re').escape(source_ip)} ip daddr {__import__('re').escape(dest_ip)} tcp dport {port} counter {action}.*# handle (\d+)"
+    pattern=rf"ip saddr {__import__('re').escape(source_ip)} ip daddr {__import__('re').escape(dest_ip)} tcp dport {port} counter packets \\d+ bytes \\d+ {action}.*# handle (\d+)"
     match=__import__("re").search(pattern,listing)
     return int(match.group(1)) if match else None
 def nft_rule_packets(handle):

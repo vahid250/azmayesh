@@ -57,5 +57,5 @@ NFT
  echo "PASS: Stage 10D disposable zone topology created; router forward policy is default drop."
 }
 down(){ need_root; cleanup; echo "Removed only Stage 10D namespaces."; }
-status(){ need_root; for n in "$ROUTER" "${zones[@]/#/rma10d-}"; do exists_ns "$n" && echo "present $n" || echo "absent $n"; done; }
+status(){ need_root; for n in "$ROUTER" "$EGRESS_NS" "${zones[@]/#/rma10d-}"; do exists_ns "$n" && echo "present $n" || echo "absent $n"; done; }
 case "${1:-}" in up) up;; down) down;; status) status;; *) echo "Usage: $0 {up|status|down}" >&2; exit 2;; esac

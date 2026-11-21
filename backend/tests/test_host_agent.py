@@ -873,6 +873,49 @@ def test_crash_window_after_durable_ledger_before_nft_recovered_on_restart(tmp_p
     restarted_store.close()
 
 
+def test_full_revoke_restart_reconcile_reauthorize_sequence(tmp_path):
+    db_path = str(tmp_path / "full-lifecycle.sqlite3")
+    wg = FakeWG()
+    revoke_registry = {"interface": "wg0", "peers": [], "remove_peers": [{
+        "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "revoked"
+    }]}
+    revoke_store = MeteringStore(db_path)
+    revoke_acks = []
+    revoke_meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=revoke_store, command=wg,
+        post=lambda *args: revoke_acks.append(args) or 200,
+        registry_fetcher=lambda *_: revoke_registry,
+    )
+    revoke_meter.sync_registry()
+    assert "10.0.0.2" in wg.revoked_ips
+    assert revoke_store.has_revoked_source("10.0.0.2/32")
+    assert revoke_acks and b'"state":"revoked"' in revoke_acks[0][2]
+    revoke_store.close()
+
+    reauth_store = MeteringStore(db_path)
+    reauth_acks = []
+    active_registry = {"interface": "wg0", "peers": [{
+        "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "peer_registered"
+    }], "remove_peers": []}
+    reauth_meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=reauth_store, command=wg,
+        post=lambda *args: reauth_acks.append(args) or 200,
+        registry_fetcher=lambda *_: active_registry,
+    )
+    reauth_meter.sync_registry()
+    wg_register = next(i for i, call in enumerate(wg.calls)
+                       if call[1:3] == ["set", "wg0"] and "allowed-ips" in call)
+    guard_delete = next(i for i, call in enumerate(wg.calls)
+                       if call[:3] == ["nft", "delete", "element"])
+    assert wg_register < guard_delete
+    assert "10.0.0.2" not in wg.revoked_ips
+    assert reauth_store.revoked_sources() == []
+    assert reauth_store.managed_peer(PUB) is not None
+    reauth_store.close()
+
+
 def test_ack_failure_keeps_revocation_guard_and_retries_after_restart(tmp_path):
     db_path = str(tmp_path / "ack-retry.sqlite3")
     registry = {"interface": "wg0", "peers": [], "remove_peers": [{

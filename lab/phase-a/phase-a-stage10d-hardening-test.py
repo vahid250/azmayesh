@@ -147,7 +147,7 @@ def main():
                                     capture_output=True,text=True)
                 listing=subprocess.run(["ip","netns","exec","rma10d-router","nft","-a","list","chain","inet","rma10d","forward"],
                                       capture_output=True,text=True)
-                match=re.search(rf"ip saddr {re.escape(source_ip)} ip daddr 10.20.11.2 tcp dport 8443.*# handle (\\d+)",listing.stdout)
+                match=re.search(rf"ip saddr {re.escape(source_ip)} ip daddr 10.20.11.2 tcp dport 8443.*# handle (\d+)",listing.stdout)
                 handle=int(match.group(1)) if match else None
                 positive,detail=egress_probe(zone) if add.returncode==0 else (False,add.stderr[:240])
                 if handle is not None:

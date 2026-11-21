@@ -32,6 +32,7 @@ class FakeWG:
         self.fail_nft_add = False
         self.fail_guard = False
         self.fail_wg_remove = False
+        self.fail_wg_register = False
 
     def __call__(self, args, **kwargs):
         self.calls.append(args)
@@ -61,6 +62,8 @@ class FakeWG:
             return subprocess.CompletedProcess(args, 0, output, "")
         if args[1:3] == ["set", "wg0"] and "remove" in args and self.fail_wg_remove:
             raise subprocess.CalledProcessError(1, args, stderr="simulated WireGuard removal failure")
+        if args[1:3] == ["set", "wg0"] and "allowed-ips" in args and self.fail_wg_register:
+            raise subprocess.CalledProcessError(1, args, stderr="simulated WG peer registration failure")
         if args[1:3] == ["set", "wg0"] and "allowed-ips" in args:
             self.hide_peer = False
         return subprocess.CompletedProcess(args, 0, "", "")
@@ -591,6 +594,26 @@ def test_revocation_ledger_rehydrates_nft_set_after_agent_and_firewall_restart(t
     guard_indices = [i for i, call in enumerate(wg.calls) if call[:4] == ["nft", "-a", "list", "chain"]]
     assert len(guard_indices) == 2 and max(guard_indices) < add_index
     restarted_store.close()
+
+
+def test_reauthorization_registration_failure_keeps_revocation_guard(tmp_path):
+    store = MeteringStore(str(tmp_path / "reauth-fail.sqlite3"))
+    wg = FakeWG()
+    wg.revoked_ips.add("10.0.0.2")
+    wg.fail_wg_register = True
+    store.remember_revoked_source("10.0.0.2/32")
+    meter = WireGuardMeter(
+        api_base_url="https://api.example.test", secret=SECRET, interface="wg0",
+        peers={}, store=store, command=wg, post=lambda *_: 200,
+        registry_fetcher=lambda *_: {"interface": "wg0", "peers": [{
+            "client_id": 7, "public_key": PUB, "allowed_ips": "10.0.0.2/32", "state": "peer_registered"
+        }], "remove_peers": []},
+    )
+    meter.sync_registry()
+    assert "10.0.0.2" in wg.revoked_ips
+    assert store.has_revoked_source("10.0.0.2/32")
+    assert not any(call[:3] == ["nft", "delete", "element"] for call in wg.calls)
+    store.close()
 
 
 def test_reauthorization_after_restart_restores_peer_before_clearing_durable_guard(tmp_path):

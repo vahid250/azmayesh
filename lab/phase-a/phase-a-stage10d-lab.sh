@@ -41,6 +41,8 @@ table inet rma10d {
   # Monitoring -> read-only health endpoints only
   ip saddr 10.20.5.2 ip daddr 10.20.2.2 tcp dport 9100 ct state new counter accept
   ip saddr 10.20.5.2 ip daddr 10.20.3.2 tcp dport 9100 ct state new counter accept
+  # Count unmatched forwarded packets to provide attributable DENY evidence.
+  counter drop
  }
 }
 NFT

@@ -7,11 +7,17 @@ on:
       - security/phase-10d-hardening
     paths:
       - "lab/phase-a/phase-a-stage10d-hardening-test.py"
+      - "lab/phase-a/phase-a-stage10d-route-matrix-test.py"
+      - "lab/phase-a/phase-a-stage10d-lab.sh"
       - ".github/workflows/phase-a-stage10d-hardening.yml"
+      - ".github/workflows/phase-a-stage10d-route-matrix.yml"
   pull_request:
     paths:
       - "lab/phase-a/phase-a-stage10d-hardening-test.py"
+      - "lab/phase-a/phase-a-stage10d-route-matrix-test.py"
+      - "lab/phase-a/phase-a-stage10d-lab.sh"
       - ".github/workflows/phase-a-stage10d-hardening.yml"
+      - ".github/workflows/phase-a-stage10d-route-matrix.yml"
 
 permissions:
   contents: read
@@ -31,16 +37,27 @@ jobs:
           sudo apt-get install -y iproute2 nftables openssl
           python3 --version
           openssl version
-      - name: Run Stage 10D-Hardening tests
+      - name: Run Stage 10D-Hardening and route tests while preserving evidence
+        # Remediation audit branch: always preserve both test logs and JSON before gate failure.
         shell: bash
         run: |
           set -Eeuo pipefail
-          LOG="$RUNNER_TEMP/phase-a-stage10d-hardening.log"
+          HARDENING_LOG="$RUNNER_TEMP/phase-a-stage10d-hardening.log"
+          MATRIX_LOG="$RUNNER_TEMP/phase-a-stage10d-route-matrix.log"
           cleanup() { sudo bash lab/phase-a/phase-a-stage10d-lab.sh down || true; }
           trap cleanup EXIT
           sudo bash lab/phase-a/phase-a-stage10d-lab.sh up
-          sudo -E python3 lab/phase-a/phase-a-stage10d-hardening-test.py 2>&1 | tee "$LOG"
-      - name: Upload complete Stage 10D-Hardening evidence
+          set +e
+          sudo -E python3 lab/phase-a/phase-a-stage10d-hardening-test.py 2>&1 | tee "$HARDENING_LOG"
+          HARDENING_RC=${PIPESTATUS[0]}
+          sudo -E python3 lab/phase-a/phase-a-stage10d-route-matrix-test.py 2>&1 | tee "$MATRIX_LOG"
+          MATRIX_RC=${PIPESTATUS[0]}
+          set -e
+          echo "hardening_rc=$HARDENING_RC route_matrix_rc=$MATRIX_RC"
+          if [ "$HARDENING_RC" -ne 0 ] || [ "$MATRIX_RC" -ne 0 ]; then
+            exit 1
+          fi
+      - name: Upload complete Stage 10D evidence (also on failure)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -48,5 +65,7 @@ jobs:
           path: |
             ${{ runner.temp }}/phase-a-stage10d-hardening.log
             ${{ runner.temp }}/phase-a-stage10d-hardening-evidence.json
+            ${{ runner.temp }}/phase-a-stage10d-route-matrix.log
+            ${{ runner.temp }}/phase-a-stage10d-route-matrix-evidence.json
           if-no-files-found: warn
           retention-days: 14

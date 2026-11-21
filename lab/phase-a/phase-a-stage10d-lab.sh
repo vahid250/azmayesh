@@ -6,12 +6,13 @@ readonly ROUTER="rma10d-router"
 readonly TABLE="rma10d"
 declare -A IDX=( [edge]=1 [api]=2 [control]=3 [admin]=4 [monitor]=5 [vpn]=6 [db]=7 [ci]=8 [rogue]=9 [vpn_peer]=10 )
 zones=(edge api control admin monitor vpn db ci rogue vpn_peer)
+readonly EGRESS_NS="rma10d-egress"
 exists_ns(){ ip netns list | awk '{print $1}' | grep -Fxq "$1"; }
-cleanup(){ for z in "${zones[@]}"; do exists_ns "rma10d-$z" && ip netns del "rma10d-$z" || true; done; exists_ns "$ROUTER" && ip netns del "$ROUTER" || true; }
+cleanup(){ for z in "${zones[@]}"; do exists_ns "rma10d-$z" && ip netns del "rma10d-$z" || true; done; exists_ns "$EGRESS_NS" && ip netns del "$EGRESS_NS" || true; exists_ns "$ROUTER" && ip netns del "$ROUTER" || true; }
 need_root(){ [[ $EUID -eq 0 ]] || { echo "Run with sudo/root" >&2; exit 1; }; }
 up(){
  need_root
- for n in "$ROUTER" "${zones[@]/#/rma10d-}"; do exists_ns "$n" && { echo "Refusing existing namespace: $n" >&2; exit 1; }; done
+ for n in "$ROUTER" "$EGRESS_NS" "${zones[@]/#/rma10d-}"; do exists_ns "$n" && { echo "Refusing existing namespace: $n" >&2; exit 1; }; done
  ip netns add "$ROUTER"; ip -n "$ROUTER" link set lo up
  for z in "${zones[@]}"; do
    ns="rma10d-$z"; i="${IDX[$z]}"; net="10.20.$i"
@@ -22,6 +23,13 @@ up(){
    ip -n "$ns" route add default via "$net.1"
    ip -n "$ROUTER" addr add "$net.1/30" dev "z${i}r"; ip -n "$ROUTER" link set "z${i}r" up
  done
+ # Controlled external sink on a dedicated lab-only routed subnet.
+ ip netns add "$EGRESS_NS"; ip -n "$EGRESS_NS" link set lo up
+ ip link add z11c type veth peer name z11r
+ ip link set z11c netns "$EGRESS_NS"; ip link set z11r netns "$ROUTER"
+ ip -n "$EGRESS_NS" addr add 10.20.11.2/30 dev z11c; ip -n "$EGRESS_NS" link set z11c up
+ ip -n "$EGRESS_NS" route add default via 10.20.11.1
+ ip -n "$ROUTER" addr add 10.20.11.1/30 dev z11r; ip -n "$ROUTER" link set z11r up
  ip netns exec "$ROUTER" sysctl -q -w net.ipv4.ip_forward=1
  ip netns exec "$ROUTER" nft -f - <<'NFT'
 table inet rma10d {
@@ -41,11 +49,13 @@ table inet rma10d {
   # Monitoring -> read-only health endpoints only
   ip saddr 10.20.5.2 ip daddr 10.20.2.2 tcp dport 9100 ct state new counter accept
   ip saddr 10.20.5.2 ip daddr 10.20.3.2 tcp dport 9100 ct state new counter accept
+  # Count unmatched forwarded packets to provide attributable DENY evidence.
+  counter drop
  }
 }
 NFT
  echo "PASS: Stage 10D disposable zone topology created; router forward policy is default drop."
 }
 down(){ need_root; cleanup; echo "Removed only Stage 10D namespaces."; }
-status(){ need_root; for n in "$ROUTER" "${zones[@]/#/rma10d-}"; do exists_ns "$n" && echo "present $n" || echo "absent $n"; done; }
+status(){ need_root; for n in "$ROUTER" "$EGRESS_NS" "${zones[@]/#/rma10d-}"; do exists_ns "$n" && echo "present $n" || echo "absent $n"; done; }
 case "${1:-}" in up) up;; down) down;; status) status;; *) echo "Usage: $0 {up|status|down}" >&2; exit 2;; esac

@@ -749,11 +749,11 @@ def test_host_agent_instance_lock_blocks_other_process_and_releases_on_close(tmp
     fd = _acquire_process_lock(lock_path)
     try:
         child_code = (
-            "from host_agent.rma_wg_meter import _acquire_process_lock\\n"
-            "import sys\\n"
-            "try:\\n    _acquire_process_lock(sys.argv[1])\\n"
-            "except RuntimeError:\\n    sys.exit(23)\\n"
-            "sys.exit(0)\\n"
+            "from host_agent.rma_wg_meter import _acquire_process_lock\n"
+            "import sys\n"
+            "try:\n    _acquire_process_lock(sys.argv[1])\n"
+            "except RuntimeError:\n    sys.exit(23)\n"
+            "sys.exit(0)\n"
         )
         child_env = os.environ.copy()
         child_env["PYTHONPATH"] = os.pathsep.join(

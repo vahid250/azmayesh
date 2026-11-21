@@ -18,6 +18,10 @@ on:
       - "lab/phase-a/phase-a-stage10d-stateful-revocation-test.py"
       - "lab/phase-a/phase-a-stage10d-lab.sh"
       - ".github/workflows/phase-a-stage10d-stateful-revocation.yml"
+      - "backend/host_agent/**"
+      - "backend/tests/test_host_agent.py"
+      - "backend/host_agent/rma-wg-meter.service"
+      - "backend/host_agent/REAL_HOST_TEST_RUNBOOK.md"
 
 concurrency:
   group: stage10d-stateful-revocation-${{ github.ref }}
